@@ -1,0 +1,62 @@
+{
+  "nsl": {
+    "name": "East Rail Line",
+    "color": "#5eb7e8",
+    "stations": "adm exc huh mkk kot taw sht rac fot uni tap two fan shs lmc low"
+  },
+  "eal": {
+    "name": "East Rail Line",
+    "color": "#5eb7e8",
+    "stations": "adm exc huh mkk kot taw sht rac fot uni tap two fan shs lmc low"
+  },
+  "ewl": {
+    "name": "Tuen Ma Line",
+    "color": "#9c2e00",
+    "stations": "wks mos heo tsh shm cio stw ckt taw hik dih kat suw tkw hom huh ets aus nac mef tww ksr yul lop tis sih tum"
+  },
+  "tml": {
+    "name": "Tuen Ma Line",
+    "color": "#9c2e00",
+    "stations": "wks mos heo tsh shm cio stw ckt taw hik dih kat suw tkw hom huh ets aus nac mef tww ksr yul lop tis sih tum"
+  },
+  "ktl": {
+    "name": "Kwun Tong Line",
+    "color": "#00a040",
+    "stations": "wha hom ymt mok pre skm kot lof wts dih chh kob ntk kwt lat yat tik"
+  },
+  "ael": {
+    "name": "Airport Express Line",
+    "color": "#00888e",
+    "stations": "awe air tsy kow hok"
+  },
+  "drl": {
+    "name": "Disneyland Resort Line",
+    "color": "#eb6ea5",
+    "stations": "sun dis"
+  },
+  "isl": {
+    "name": "Island Line",
+    "color": "#0075c2",
+    "stations": "chw hfc skw swh tak qub nop foh tih cab wac cen adm shw syp hku ket"
+  },
+  "tcl": {
+    "name": "Tung Chung Line",
+    "color": "#f3982d",
+    "stations": "tuc sun tsy lak nac oly kow hok"
+  },
+  "tkl": {
+    "name": "Tseung Kwan O Line",
+    "color": "#7e3c93",
+    "stations": "lhp poa hah tko tik yat qub nop"
+  },
+  "twl": {
+    "name": "Tsuen Wan Line",
+    "color": "#e60012",
+    "stations": "tsw twh kwh kwf lak mef lck csw ssp pre mok ymt jor tst adm cen"
+  },
+  "sil": {
+    "name": "South Island Line",
+    "color": "#cbd300",
+    "stations": "soh let wch ocp adm"
+  }
+}
