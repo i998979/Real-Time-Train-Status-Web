@@ -20,12 +20,6 @@ let apiUrl;
 // On page load
 window.addEventListener("DOMContentLoaded", async () => {
     const urlParams = new URLSearchParams(window.location.search);
-    const today = new Date();
-    const migrationDate = new Date('2026-05-31');
-    if (urlParams.get('migrated') === 'true' && today <= migrationDate) {
-        const banner = document.getElementById("migration-banner");
-        banner.style.display = 'block';
-    }
 
     const [locRes, lineRes, stRes, nameRes] = await Promise.all([
         fetch('./data/location.json').then(r => r.json()),
