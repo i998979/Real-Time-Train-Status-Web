@@ -508,6 +508,7 @@ async function drawStations() {
                             </div>
                         </div>
                     `,
+            minWidth: 1000,
             maxWidth: 1000,
             pixelOffset: new google.maps.Size(0, -50)
         });
@@ -808,6 +809,7 @@ async function updateEALTrainLocations(data) {
 
                 // Create the InfoWindow
                 const infoWin = new google.maps.InfoWindow({
+                    minWidth: 1000,
                     maxWidth: 1000,
                     pixelOffset: new google.maps.Size(0, 50)
                 });
@@ -917,6 +919,7 @@ async function updateTMLTrainLocations(data) {
 
                 // Create the InfoWindow
                 const infoWin = new google.maps.InfoWindow({
+                    minWidth: 1000,
                     maxWidth: 1000,
                     pixelOffset: new google.maps.Size(0, 50)
                 });
