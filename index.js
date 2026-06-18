@@ -137,6 +137,7 @@ async function initMap() {
         mapId: '7588c4bd46aa102a',
         streetViewControl: false,
         clickableIcons: false,
+        gestureHandling: "greedy"
     });
 
     map.addListener("click", () => {
