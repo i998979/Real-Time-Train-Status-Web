@@ -15,6 +15,14 @@ let stationLoc, stations, lines;
 let eal_main, eal_low, eal_lmc, eal_rac, tml_main, ktl_main, ael_main, drl_main, isl_main, tcl_main, tkl_main,
     tkl_lhp, twl_main, sil_main;
 
+let drawnPolylines = {};
+const defaultVisibility = {
+    lines: {eal: true, tml: true, ktl: true, ael: true, drl: true, isl: true, tcl: true, tkl: true, twl: true, sil: true},
+    trains: {EAL: true, TML: true}
+};
+const savedVisibility = localStorage.getItem('map_visibility');
+let currentVisibility = savedVisibility ? JSON.parse(savedVisibility) : JSON.parse(JSON.stringify(defaultVisibility));
+
 let apiUrl;
 
 // On page load
@@ -175,6 +183,14 @@ async function initMap() {
     await drawLines();
     await drawStations();
 
+    Object.keys(drawnPolylines).forEach(line => (drawnPolylines[line] || []).forEach(p => p.setMap(currentVisibility.lines[line] ? map : null)));
+    Object.keys(stationMarkers).forEach(station => {
+        const isVisible = Object.keys(currentVisibility.lines).some(lineKey =>
+            currentVisibility.lines[lineKey] && lines[lineKey] && lines[lineKey].stations && lines[lineKey].stations.split(" ").includes(station.toLowerCase())
+        );
+        stationMarkers[station].map = isVisible ? map : null;
+    });
+
     // Start fetching train data if not scheduled
     if (!trainInterval) {
         await fetchTrainData();
@@ -183,6 +199,105 @@ async function initMap() {
 
     await fetchHKOData();
     hkoInterval = setInterval(fetchHKOData, 60000);
+
+
+    document.body.insertAdjacentHTML('beforeend', `
+        <button id="toggleMenuBtn" style="position: absolute; top: 10px; left: 10px; z-index: 1000; padding: 10px 20px; font-size: 16px; cursor: pointer; background: #fff; border: 2px solid #ccc; border-radius: 5px; box-shadow: 0 2px 6px rgba(0,0,0,0.3); font-weight: bold;">Display Setting</button>
+        <div id="visMenuOverlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1001; align-items: center; justify-content: center; backdrop-filter: blur(2px);">
+            <div style="background: white; padding: 20px; border-radius: 8px; width: 340px; max-height: 80vh; overflow-y: auto; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+                <h3 style="margin-top: 0; text-align: center; border-bottom: 1px solid #ddd; padding-bottom: 10px;">Display Setting</h3>
+                <div id="visCheckboxes" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px;"></div>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <button id="visSelectAllBtn" style="flex: 1; padding: 10px; cursor: pointer; background: #2196F3; color: white; border: none; border-radius: 4px; font-weight: bold;">Select All</button>
+                    <button id="visCloseBtn" style="flex: 1; padding: 10px; cursor: pointer; background: #f44336; color: white; border: none; border-radius: 4px; font-weight: bold;">Close</button>
+                </div>
+            </div>
+        </div>
+    `);
+
+    const visMenuOverlay = document.getElementById('visMenuOverlay');
+    const visCheckboxes = document.getElementById('visCheckboxes');
+
+    visCheckboxes.addEventListener('change', (e) => {
+        if (e.target.tagName === 'INPUT') {
+            currentVisibility[e.target.dataset.type][e.target.dataset.key] = e.target.checked;
+            localStorage.setItem('map_visibility', JSON.stringify(currentVisibility));
+
+            Object.keys(drawnPolylines).forEach(line => (drawnPolylines[line] || []).forEach(p => p.setMap(currentVisibility.lines[line] ? map : null)));
+            Object.values(trainMarkers).forEach(m => {
+                if (m.customLineType) m.map = currentVisibility.trains[m.customLineType] ? map : null;
+            });
+            Object.keys(stationMarkers).forEach(station => {
+                const isVisible = Object.keys(currentVisibility.lines).some(lineKey =>
+                    currentVisibility.lines[lineKey] && lines[lineKey] && lines[lineKey].stations && lines[lineKey].stations.split(" ").includes(station.toLowerCase())
+                );
+                stationMarkers[station].map = isVisible ? map : null;
+            });
+        }
+    });
+
+    document.getElementById('toggleMenuBtn').addEventListener('click', () => {
+        visCheckboxes.innerHTML = '';
+        Object.keys(currentVisibility.lines).forEach(line => {
+            const lineInfo = lines[line.toLowerCase()] || { name: line.toUpperCase(), color: '#777' };
+            visCheckboxes.insertAdjacentHTML('beforeend', `
+                <label style="display:flex; align-items:center; gap:10px; cursor:pointer; width: 100%;">
+                    <input type="checkbox" data-type="lines" data-key="${line}" ${currentVisibility.lines[line] ? 'checked' : ''}> 
+                    <span style="background-color: ${lineInfo.color}; color: white; padding: 4px 12px; border-radius: 20px; font-weight: bold; font-size: 14px; display: inline-block; flex-grow: 1; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.2);">
+                        ${lineInfo.name}
+                    </span>
+                </label>
+            `);
+        });
+        visCheckboxes.insertAdjacentHTML('beforeend', `<hr style="width:100%; border:0; border-top:1px solid #ddd; margin: 5px 0;">`);
+        Object.keys(currentVisibility.trains).forEach(train => {
+            const lineInfo = lines[train.toLowerCase()] || { name: train + " Line", color: '#777' };
+            visCheckboxes.insertAdjacentHTML('beforeend', `
+                <label style="display:flex; align-items:center; gap:10px; cursor:pointer; width: 100%;">
+                    <input type="checkbox" data-type="trains" data-key="${train}" ${currentVisibility.trains[train] ? 'checked' : ''}> 
+                    <span style="background-color: ${lineInfo.color}; color: white; padding: 4px 12px; border-radius: 20px; font-weight: bold; font-size: 14px; display: inline-block; flex-grow: 1; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.2);">
+                        ${lineInfo.name} Train Location
+                    </span>
+                </label>
+            `);
+        });
+        visMenuOverlay.style.display = 'flex';
+    });
+
+    document.getElementById('visCloseBtn').addEventListener('click', () => visMenuOverlay.style.display = 'none');
+    visMenuOverlay.addEventListener('click', (e) => {
+        if (e.target === visMenuOverlay) visMenuOverlay.style.display = 'none';
+    });
+
+    document.getElementById('visSelectAllBtn').addEventListener('click', () => {
+        Object.keys(currentVisibility.lines).forEach(k => currentVisibility.lines[k] = true);
+        Object.keys(currentVisibility.trains).forEach(k => currentVisibility.trains[k] = true);
+        localStorage.setItem('map_visibility', JSON.stringify(currentVisibility));
+
+        document.getElementById('toggleMenuBtn').click();
+        Object.keys(drawnPolylines).forEach(line => (drawnPolylines[line] || []).forEach(p => p.setMap(map)));
+        Object.values(trainMarkers).forEach(m => {
+            if (m.customLineType) m.map = map;
+        });
+        Object.values(stationMarkers).forEach(m => m.map = map);
+    });
+
+    document.getElementById('visDefaultBtn').addEventListener('click', () => {
+        currentVisibility = JSON.parse(JSON.stringify(defaultVisibility));
+        localStorage.setItem('map_visibility', JSON.stringify(currentVisibility));
+
+        document.getElementById('toggleMenuBtn').click();
+        Object.keys(drawnPolylines).forEach(line => (drawnPolylines[line] || []).forEach(p => p.setMap(currentVisibility.lines[line] ? map : null)));
+        Object.values(trainMarkers).forEach(m => {
+            if (m.customLineType) m.map = currentVisibility.trains[m.customLineType] ? map : null;
+        });
+        Object.keys(stationMarkers).forEach(station => {
+            const isVisible = Object.keys(currentVisibility.lines).some(lineKey =>
+                currentVisibility.lines[lineKey] && lines[lineKey] && lines[lineKey].stations && lines[lineKey].stations.split(" ").includes(station.toLowerCase())
+            );
+            stationMarkers[station].map = isVisible ? map : null;
+        });
+    });
 }
 
 // Fetch train location from callback
@@ -465,13 +580,17 @@ async function drawLines() {
         {path: tcl_main, name: 'tcl'}, {path: tkl_main, name: 'tkl'}, {path: tkl_lhp, name: 'tkl'},
         {path: twl_main, name: 'twl'}, {path: sil_main, name: 'sil'}
     ].forEach(({path, name}) => {
-        new google.maps.Polyline({
+        const polyline = new google.maps.Polyline({
             path,
             geodesic: false,
             strokeColor: lines[name].color,
             strokeOpacity: 1.0,
             strokeWeight: 5
-        }).setMap(map);
+        });
+        polyline.setMap(map);
+
+        if (!drawnPolylines[name]) drawnPolylines[name] = [];
+        drawnPolylines[name].push(polyline);
     });
 }
 
@@ -782,6 +901,7 @@ async function updateEALTrainLocations(data) {
             if (trainMarkers[trainId]) {
                 // Update existing marker position
                 trainMarkers[trainId].position = position;
+                trainMarkers[trainId].map = currentVisibility.trains.EAL ? map : null;
 
                 const isNis = csc === 0 || Date.now() / 1000 - receivedTime > 60 || !isPassengerTrain(td);
                 const imgElement = trainMarkers[trainId].content.querySelector('img');
@@ -800,11 +920,13 @@ async function updateEALTrainLocations(data) {
 
                 const trainMarker = new AdvancedMarkerElement({
                     position,
-                    map,
+                    map: currentVisibility.trains.EAL ? map : null,
                     content: element,
                     gmpClickable: true,
                     zIndex: i
                 });
+
+                trainMarker.customLineType = "EAL";
 
                 // Create the InfoWindow
                 const infoWin = new google.maps.InfoWindow({
@@ -885,6 +1007,7 @@ async function updateTMLTrainLocations(data) {
             if (trainMarkers[trainId]) {
                 // Update existing marker position
                 trainMarkers[trainId].position = position;
+                trainMarkers[trainId].map = currentVisibility.trains.TML ? map : null;
 
                 const isNis = csc === 0 || Date.now() / 1000 - receivedTime > 60;
                 const prefix = train_type === "SP1900" ? "sp1900" : "t1141a";
@@ -909,11 +1032,13 @@ async function updateTMLTrainLocations(data) {
 
                 const trainMarker = new AdvancedMarkerElement({
                     position,
-                    map,
+                    map: currentVisibility.trains.TML ? map : null,
                     content: element,
                     gmpClickable: true,
                     zIndex: 36 + i
                 });
+
+                trainMarker.customLineType = "TML";
 
                 // Create the InfoWindow
                 const infoWin = new google.maps.InfoWindow({
