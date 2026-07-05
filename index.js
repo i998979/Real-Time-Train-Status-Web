@@ -17,7 +17,18 @@ let eal_main, eal_low, eal_lmc, eal_rac, tml_main, ktl_main, ael_main, drl_main,
 
 let drawnPolylines = {};
 const defaultVisibility = {
-    lines: {eal: true, tml: true, ktl: true, ael: true, drl: true, isl: true, tcl: true, tkl: true, twl: true, sil: true},
+    lines: {
+        eal: true,
+        tml: true,
+        ktl: true,
+        ael: true,
+        drl: true,
+        isl: true,
+        tcl: true,
+        tkl: true,
+        twl: true,
+        sil: true
+    },
     trains: {EAL: true, TML: true}
 };
 const savedVisibility = localStorage.getItem('map_visibility');
@@ -191,6 +202,8 @@ async function initMap() {
         stationMarkers[station].map = isVisible ? map : null;
     });
 
+    setupDisplayMenu();
+
     // Start fetching train data if not scheduled
     if (!trainInterval) {
         await fetchTrainData();
@@ -199,12 +212,13 @@ async function initMap() {
 
     await fetchHKOData();
     hkoInterval = setInterval(fetchHKOData, 60000);
+}
 
-
+function setupDisplayMenu() {
     document.body.insertAdjacentHTML('beforeend', `
         <button id="toggleMenuBtn" style="position: absolute; top: 10px; left: 10px; z-index: 1000; padding: 10px 20px; font-size: 16px; cursor: pointer; background: #fff; border: 2px solid #ccc; border-radius: 5px; box-shadow: 0 2px 6px rgba(0,0,0,0.3); font-weight: bold;">Display Setting</button>
         <div id="visMenuOverlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1001; align-items: center; justify-content: center; backdrop-filter: blur(2px);">
-            <div style="background: white; padding: 20px; border-radius: 8px; width: 340px; max-height: 80vh; overflow-y: auto; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+            <div style="background: white; padding: 20px; border-radius: 8px; width: 550px; max-height: 80vh; overflow-y: auto; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
                 <h3 style="margin-top: 0; text-align: center; border-bottom: 1px solid #ddd; padding-bottom: 10px;">Display Setting</h3>
                 <div id="visCheckboxes" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px;"></div>
                 <div style="display: flex; gap: 10px; flex-wrap: wrap;">
@@ -239,7 +253,7 @@ async function initMap() {
     document.getElementById('toggleMenuBtn').addEventListener('click', () => {
         visCheckboxes.innerHTML = '';
         Object.keys(currentVisibility.lines).forEach(line => {
-            const lineInfo = lines[line.toLowerCase()] || { name: line.toUpperCase(), color: '#777' };
+            const lineInfo = lines[line.toLowerCase()] || {name: line.toUpperCase(), color: '#777'};
             visCheckboxes.insertAdjacentHTML('beforeend', `
                 <label style="display:flex; align-items:center; gap:10px; cursor:pointer; width: 100%;">
                     <input type="checkbox" data-type="lines" data-key="${line}" ${currentVisibility.lines[line] ? 'checked' : ''}> 
@@ -251,7 +265,7 @@ async function initMap() {
         });
         visCheckboxes.insertAdjacentHTML('beforeend', `<hr style="width:100%; border:0; border-top:1px solid #ddd; margin: 5px 0;">`);
         Object.keys(currentVisibility.trains).forEach(train => {
-            const lineInfo = lines[train.toLowerCase()] || { name: train + " Line", color: '#777' };
+            const lineInfo = lines[train.toLowerCase()] || {name: train + " Line", color: '#777'};
             visCheckboxes.insertAdjacentHTML('beforeend', `
                 <label style="display:flex; align-items:center; gap:10px; cursor:pointer; width: 100%;">
                     <input type="checkbox" data-type="trains" data-key="${train}" ${currentVisibility.trains[train] ? 'checked' : ''}> 
@@ -280,23 +294,6 @@ async function initMap() {
             if (m.customLineType) m.map = map;
         });
         Object.values(stationMarkers).forEach(m => m.map = map);
-    });
-
-    document.getElementById('visDefaultBtn').addEventListener('click', () => {
-        currentVisibility = JSON.parse(JSON.stringify(defaultVisibility));
-        localStorage.setItem('map_visibility', JSON.stringify(currentVisibility));
-
-        document.getElementById('toggleMenuBtn').click();
-        Object.keys(drawnPolylines).forEach(line => (drawnPolylines[line] || []).forEach(p => p.setMap(currentVisibility.lines[line] ? map : null)));
-        Object.values(trainMarkers).forEach(m => {
-            if (m.customLineType) m.map = currentVisibility.trains[m.customLineType] ? map : null;
-        });
-        Object.keys(stationMarkers).forEach(station => {
-            const isVisible = Object.keys(currentVisibility.lines).some(lineKey =>
-                currentVisibility.lines[lineKey] && lines[lineKey] && lines[lineKey].stations && lines[lineKey].stations.split(" ").includes(station.toLowerCase())
-            );
-            stationMarkers[station].map = isVisible ? map : null;
-        });
     });
 }
 
