@@ -11,18 +11,6 @@ html, body {
     object-fit: contain;
 }
 
-#migration-banner {
-    display: none;
-    width: 100%;
-    background: #ff9800;
-    color: white;
-    padding: 15px;
-    text-align: center;
-    font-size: 16px;
-    flex-shrink: 0;
-    box-sizing: border-box;
-}
-
 #map {
     width: 100%;
     flex: 1;
