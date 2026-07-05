@@ -216,7 +216,7 @@ async function initMap() {
 
 function setupDisplayMenu() {
     document.body.insertAdjacentHTML('beforeend', `
-        <button id="toggleMenuBtn" style="position: absolute; top: 10px; left: 10px; z-index: 1000; padding: 10px 20px; font-size: 16px; cursor: pointer; background: #fff; border: 2px solid #ccc; border-radius: 5px; box-shadow: 0 2px 6px rgba(0,0,0,0.3); font-weight: bold;">Display Setting</button>
+        <button id="toggleMenuBtn" style="position: absolute; top: 10px; left: 10px; z-index: 1000; padding: 10px 20px; font-size: 24px; cursor: pointer; background: #fff; border: 2px solid #ccc; border-radius: 5px; box-shadow: 0 2px 6px rgba(0,0,0,0.3); font-weight: bold;">Display Setting</button>
         <div id="visMenuOverlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1001; align-items: center; justify-content: center; backdrop-filter: blur(2px);">
             <div style="background: white; padding: 20px; border-radius: 8px; width: 550px; max-height: 80vh; overflow-y: auto; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
                 <h3 style="margin-top: 0; text-align: center; border-bottom: 1px solid #ddd; padding-bottom: 10px;">Display Setting</h3>
