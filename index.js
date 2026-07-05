@@ -221,9 +221,9 @@ function setupDisplayMenu() {
             <div style="background: white; padding: 20px; border-radius: 8px; width: 550px; max-height: 80vh; overflow-y: auto; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
                 <h3 style="margin-top: 0; text-align: center; border-bottom: 1px solid #ddd; padding-bottom: 10px;">Display Setting</h3>
                 <div id="visCheckboxes" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px;"></div>
-                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                    <button id="visSelectAllBtn" style="flex: 1; padding: 10px; cursor: pointer; background: #2196F3; color: white; border: none; border-radius: 4px; font-weight: bold;">Select All</button>
-                    <button id="visCloseBtn" style="flex: 1; padding: 10px; cursor: pointer; background: #f44336; color: white; border: none; border-radius: 4px; font-weight: bold;">Close</button>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;">
+                    <button id="visSelectAllBtn" style="flex: 1; max-width: 150px; padding: 10px; cursor: pointer; background: #2196F3; color: white; border: none; border-radius: 4px; font-weight: bold;">Select All</button>
+                    <button id="visCloseBtn" style="flex: 1; max-width: 150px; padding: 10px; cursor: pointer; background: #f44336; color: white; border: none; border-radius: 4px; font-weight: bold;">Close</button>
                 </div>
             </div>
         </div>
@@ -252,29 +252,33 @@ function setupDisplayMenu() {
 
     document.getElementById('toggleMenuBtn').addEventListener('click', () => {
         visCheckboxes.innerHTML = '';
+
         Object.keys(currentVisibility.lines).forEach(line => {
-            const lineInfo = lines[line.toLowerCase()] || {name: line.toUpperCase(), color: '#777'};
+            const lineInfo = lines[line.toLowerCase()] || { name: line.toUpperCase(), color: '#777' };
             visCheckboxes.insertAdjacentHTML('beforeend', `
                 <label style="display:flex; align-items:center; gap:10px; cursor:pointer; width: 100%;">
                     <input type="checkbox" data-type="lines" data-key="${line}" ${currentVisibility.lines[line] ? 'checked' : ''}> 
-                    <span style="background-color: ${lineInfo.color}; color: white; padding: 4px 12px; border-radius: 20px; font-weight: bold; font-size: 14px; display: inline-block; flex-grow: 1; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.2);">
+                    <span style="background-color: ${lineInfo.color}; color: white; padding: 5px 10px; border-radius: 20px; font-weight: bold; font-size: 26px; display: inline-block; flex-grow: 1; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.2);">
                         ${lineInfo.name}
                     </span>
                 </label>
             `);
         });
+
         visCheckboxes.insertAdjacentHTML('beforeend', `<hr style="width:100%; border:0; border-top:1px solid #ddd; margin: 5px 0;">`);
+
         Object.keys(currentVisibility.trains).forEach(train => {
-            const lineInfo = lines[train.toLowerCase()] || {name: train + " Line", color: '#777'};
+            const lineInfo = lines[train.toLowerCase()] || { name: train + " Line", color: '#777' };
             visCheckboxes.insertAdjacentHTML('beforeend', `
                 <label style="display:flex; align-items:center; gap:10px; cursor:pointer; width: 100%;">
                     <input type="checkbox" data-type="trains" data-key="${train}" ${currentVisibility.trains[train] ? 'checked' : ''}> 
-                    <span style="background-color: ${lineInfo.color}; color: white; padding: 4px 12px; border-radius: 20px; font-weight: bold; font-size: 14px; display: inline-block; flex-grow: 1; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.2);">
+                    <span style="background-color: ${lineInfo.color}; color: white; padding: 5px 10px; border-radius: 20px; font-weight: bold; font-size: 26px; display: inline-block; flex-grow: 1; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.2);">
                         ${lineInfo.name} Train Location
                     </span>
                 </label>
             `);
         });
+
         visMenuOverlay.style.display = 'flex';
     });
 
