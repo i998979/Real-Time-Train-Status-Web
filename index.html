@@ -62,7 +62,19 @@
     <script src="index.js" defer></script>
 </head>
 <body>
-<!--<img id="banner" src="public/banner.jpg" alt="Banner">-->
+
+<button id="toggleMenuBtn" class="menu-toggle-btn pointer font-bold">Display Setting</button>
+<div id="visMenuOverlay" class="menu-overlay">
+    <div class="menu-modal">
+        <h3 class="menu-header text-center">Display Setting</h3>
+        <div id="visCheckboxes" class="menu-checkboxes"></div>
+        <div class="menu-actions">
+            <button id="visSelectAllBtn" class="menu-btn btn-blue text-white font-bold pointer">Select All</button>
+            <button id="visCloseBtn" class="menu-btn btn-red text-white font-bold pointer">Close</button>
+        </div>
+    </div>
+</div>
+
 <div id="map"></div>
 </body>
 </html>

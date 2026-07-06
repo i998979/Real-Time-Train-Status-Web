@@ -18,16 +18,8 @@ let eal_main, eal_low, eal_lmc, eal_rac, tml_main, ktl_main, ael_main, drl_main,
 let drawnPolylines = {};
 const defaultVisibility = {
     lines: {
-        eal: true,
-        tml: true,
-        ktl: true,
-        ael: true,
-        drl: true,
-        isl: true,
-        tcl: true,
-        tkl: true,
-        twl: true,
-        sil: true
+        eal: true, tml: true, ktl: true, ael: true, drl: true,
+        isl: true, tcl: true, tkl: true, twl: true, sil: true
     },
     trains: {EAL: true, TML: true}
 };
@@ -50,20 +42,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     lines = nameRes;
     stations = stRes;
     ({
-        eal_main,
-        eal_low,
-        eal_lmc,
-        eal_rac,
-        tml_main,
-        ktl_main,
-        ael_main,
-        drl_main,
-        isl_main,
-        tcl_main,
-        tkl_main,
-        tkl_lhp,
-        twl_main,
-        sil_main
+        eal_main, eal_low, eal_lmc, eal_rac, tml_main, ktl_main, ael_main, drl_main,
+        isl_main, tcl_main, tkl_main, tkl_lhp, twl_main, sil_main
     } = lineRes);
 
     const apiHash = "Pt9cbvp5fMcH9phDnzSPskMqEIhky0ywV7hbZP5dnadu6VAYJzybR6puG0F07Vu9";
@@ -116,12 +96,8 @@ document.addEventListener("visibilitychange", async () => {
     else {
         console.log("Tab is inactive. Clearing fetch interval and aborting fetch.");
 
-        [trainInterval, stationInterval, hkoInterval].forEach(i => {
-            return i && clearInterval(i);
-        });
-        [trainController, rtController, ntController, hkoController].forEach(c => {
-            return c && c.abort();
-        });
+        [trainInterval, stationInterval, hkoInterval].forEach(i => i && clearInterval(i));
+        [trainController, rtController, ntController, hkoController].forEach(c => c && c.abort());
         trainInterval = stationInterval = hkoInterval = null;
         trainController = rtController = ntController = hkoController = null;
     }
@@ -167,9 +143,8 @@ async function initMap() {
             if (rtController) rtController.abort();
             if (ntController) ntController.abort();
 
-            if (openedWindow.associatedMarker) {
-                openedWindow.associatedMarker = null;
-            }
+            if (openedWindow.associatedMarker) openedWindow.associatedMarker = null;
+
             openedWindow = null;
             openedStation = null;
             stationInterval = null;
@@ -204,6 +179,8 @@ async function initMap() {
 
     setupDisplayMenu();
 
+    document.getElementById('toggleMenuBtn').classList.add('visible');
+
     // Start fetching train data if not scheduled
     if (!trainInterval) {
         await fetchTrainData();
@@ -215,20 +192,6 @@ async function initMap() {
 }
 
 function setupDisplayMenu() {
-    document.body.insertAdjacentHTML('beforeend', `
-        <button id="toggleMenuBtn" style="position: absolute; top: 10px; left: 10px; z-index: 1000; padding: 10px 20px; font-size: 24px; cursor: pointer; background: #fff; border: 2px solid #ccc; border-radius: 5px; box-shadow: 0 2px 6px rgba(0,0,0,0.3); font-weight: bold;">Display Setting</button>
-        <div id="visMenuOverlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1001; align-items: center; justify-content: center; backdrop-filter: blur(2px);">
-            <div style="background: white; padding: 20px; border-radius: 8px; width: 550px; max-height: 80vh; overflow-y: auto; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
-                <h3 style="margin-top: 0; text-align: center; border-bottom: 1px solid #ddd; padding-bottom: 10px;">Display Setting</h3>
-                <div id="visCheckboxes" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px;"></div>
-                <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;">
-                    <button id="visSelectAllBtn" style="flex: 1; max-width: 150px; padding: 10px; cursor: pointer; background: #2196F3; color: white; border: none; border-radius: 4px; font-weight: bold;">Select All</button>
-                    <button id="visCloseBtn" style="flex: 1; max-width: 150px; padding: 10px; cursor: pointer; background: #f44336; color: white; border: none; border-radius: 4px; font-weight: bold;">Close</button>
-                </div>
-            </div>
-        </div>
-    `);
-
     const visMenuOverlay = document.getElementById('visMenuOverlay');
     const visCheckboxes = document.getElementById('visCheckboxes');
 
@@ -254,37 +217,37 @@ function setupDisplayMenu() {
         visCheckboxes.innerHTML = '';
 
         Object.keys(currentVisibility.lines).forEach(line => {
-            const lineInfo = lines[line.toLowerCase()] || { name: line.toUpperCase(), color: '#777' };
+            const lineInfo = lines[line.toLowerCase()] || {name: line.toUpperCase(), color: '#777'};
             visCheckboxes.insertAdjacentHTML('beforeend', `
-                <label style="display:flex; align-items:center; gap:10px; cursor:pointer; width: 100%;">
+                <label class="vis-label pointer w-100">
                     <input type="checkbox" data-type="lines" data-key="${line}" ${currentVisibility.lines[line] ? 'checked' : ''}> 
-                    <span style="background-color: ${lineInfo.color}; color: white; padding: 5px 10px; border-radius: 20px; font-weight: bold; font-size: 26px; display: inline-block; flex-grow: 1; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.2);">
+                    <span class="vis-span text-white font-bold text-center" style="background-color: ${lineInfo.color};">
                         ${lineInfo.name}
                     </span>
                 </label>
             `);
         });
 
-        visCheckboxes.insertAdjacentHTML('beforeend', `<hr style="width:100%; border:0; border-top:1px solid #ddd; margin: 5px 0;">`);
+        visCheckboxes.insertAdjacentHTML('beforeend', `<hr class="vis-divider w-100">`);
 
         Object.keys(currentVisibility.trains).forEach(train => {
-            const lineInfo = lines[train.toLowerCase()] || { name: train + " Line", color: '#777' };
+            const lineInfo = lines[train.toLowerCase()] || {name: train + " Line", color: '#777'};
             visCheckboxes.insertAdjacentHTML('beforeend', `
-                <label style="display:flex; align-items:center; gap:10px; cursor:pointer; width: 100%;">
+                <label class="vis-label pointer w-100">
                     <input type="checkbox" data-type="trains" data-key="${train}" ${currentVisibility.trains[train] ? 'checked' : ''}> 
-                    <span style="background-color: ${lineInfo.color}; color: white; padding: 5px 10px; border-radius: 20px; font-weight: bold; font-size: 26px; display: inline-block; flex-grow: 1; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.2);">
+                    <span class="vis-span text-white font-bold text-center" style="background-color: ${lineInfo.color};">
                         ${lineInfo.name} Train Location
                     </span>
                 </label>
             `);
         });
 
-        visMenuOverlay.style.display = 'flex';
+        visMenuOverlay.classList.add('visible');
     });
 
-    document.getElementById('visCloseBtn').addEventListener('click', () => visMenuOverlay.style.display = 'none');
+    document.getElementById('visCloseBtn').addEventListener('click', () => visMenuOverlay.classList.remove('visible'));
     visMenuOverlay.addEventListener('click', (e) => {
-        if (e.target === visMenuOverlay) visMenuOverlay.style.display = 'none';
+        if (e.target === visMenuOverlay) visMenuOverlay.classList.remove('visible');
     });
 
     document.getElementById('visSelectAllBtn').addEventListener('click', () => {
@@ -312,9 +275,7 @@ async function fetchTrainData() {
 
         [ealData, tmlData, ktlData, islData, twlData, tklData, tclData] = await Promise.all(lineNames.map(line =>
             fetch(`${apiUrl}line=${line}`, {signal})
-                .then(res => {
-                    return res.ok ? res.json() : Promise.reject(`${line} fetch failed`);
-                })
+                .then(res => res.ok ? res.json() : Promise.reject(`${line} fetch failed`))
         ));
 
         // Update train locations
@@ -334,7 +295,6 @@ async function fetchTrainData() {
 async function fetchRoctec(station) {
     try {
         if (rtController) rtController.abort();
-
         rtController = new AbortController();
 
         const response = await fetch(`${apiUrl}station=${station}`, {signal: rtController.signal});
@@ -342,8 +302,7 @@ async function fetchRoctec(station) {
             await updateStationData(station, await response.json(), "Roctec");
         }
     } catch (e) {
-        if (e.name !== "AbortError")
-            console.error("Error fetching station data:", e);
+        if (e.name !== "AbortError") console.error("Error fetching station data:", e);
     } finally {
         rtController = null;
     }
@@ -370,8 +329,7 @@ async function fetchNextTrain(station) {
         }));
         await updateStationData(station, merged, "NextTrain");
     } catch (e) {
-        if (e.name !== "AbortError")
-            console.error("Error fetching NextTrain:", e);
+        if (e.name !== "AbortError") console.error("Error fetching NextTrain:", e);
     } finally {
         ntController = null;
     }
@@ -404,8 +362,7 @@ async function fetchHKOData() {
             }
         }
     } catch (e) {
-        if (e.name !== "AbortError")
-            console.error("Error fetching HKO:", e);
+        if (e.name !== "AbortError") console.error("Error fetching HKO:", e);
     } finally {
         hkoController = null;
     }
@@ -430,14 +387,9 @@ async function updateStationData(station, data, type) {
                     } else {
                         const td = (trip.td || "").trim();
                         const tdNum = parseInt(td.slice(line === "TCL" ? -3 : -2), 10);
-                        const data = {
-                            KTL: ktlData,
-                            ISL: islData,
-                            TWL: twlData,
-                            TKL: tklData,
-                            TCL: tclData
-                        }[line];
-                        const match = data?.find(t => {
+                        const dataMap = {KTL: ktlData, ISL: islData, TWL: twlData, TKL: tklData, TCL: tclData}[line];
+
+                        const match = dataMap?.find(t => {
                             const ttd = (t.td || "").trim();
                             const tNum = parseInt(ttd.slice(line === "TCL" ? -3 : -2), 10);
                             if (Date.now() / 1000 - t.updatedTime > (line === "TCL" ? 600 : 300)) return false;
@@ -475,77 +427,75 @@ async function updateStationData(station, data, type) {
     if (openedWindow && stationMarkers[station] === openedWindow.associatedMarker) {
         const renderTable = (isRoctec) => {
             let content = `
-                        <div style="font-family: Arial, sans-serif; font-size: 24px; width: 550px;">
-                            <div style="font-size: 32px; font-weight: bold; text-align: center;">${stations[station.toLowerCase()]}</div>
-                            <div style="text-align: right; color: gray;">Last Update: ${isRoctec ? new Date(roctecLastUpdate).toLocaleString("zh-HK", {timeZone: "Asia/Hong_Kong"}) : ntLastUpdate}</div>
-                            <div style="text-align: left; margin-top: 5px; background-color: #02254D; padding: 5px;">
-                                ${weatherIcons.map(icon => `<img src="public/${icon}" alt="" style="height: 32px; vertical-align: middle; margin-right: 4px;">`).join('')}
-                                <span style="font-size: 20px; vertical-align: middle; color: white;">${temperature}°C</span>
-                            </div>
-                            <table style="width: 100%; border-collapse: collapse;">
-                                <thead>
-                                    <tr style="background-color: #02254D; color: white;">
-                                        <th style="text-align: left; border: 1px solid #ddd; padding: 5px;">Destination</th>
-                                        ${isRoctec ? '<th style="text-align: left; border: 1px solid #ddd; padding: 5px;">Trip</th><th style="text-align: left; border: 1px solid #ddd; padding: 5px;">Train</th>' : ''}
-                                        <th style="text-align: left; border: 1px solid #ddd; padding: 5px;">Plat.</th>
-                                        <th style="text-align: left; border: 1px solid #ddd; padding: 5px;">TTNT</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                    `;
+                <div class="info-window-container">
+                    <div class="info-window-title text-center font-bold">${stations[station.toLowerCase()]}</div>
+                    <div class="info-window-subtitle text-right text-gray">Last Update: ${isRoctec ? new Date(roctecLastUpdate).toLocaleString("zh-HK", {timeZone: "Asia/Hong_Kong"}) : ntLastUpdate}</div>
+                    <div class="weather-container">
+                        ${weatherIcons.map(icon => `<img src="public/${icon}" alt="" class="weather-icon">`).join('')}
+                        <span class="weather-temp text-white">${temperature}°C</span>
+                    </div>
+                    <table class="data-table w-100">
+                        <thead>
+                            <tr class="bg-navy text-white">
+                                <th class="table-cell">Destination</th>
+                                ${isRoctec ? '<th class="table-cell">Trip</th><th class="table-cell">Train</th>' : ''}
+                                <th class="table-cell">Plat.</th>
+                                <th class="table-cell">TTNT</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
             let currentLine = '';
             let currentColor = '#FFFFFF';
+
             (isRoctec ? roctecTrainData : ntTrainData).forEach((train) => {
                 if (train.line !== currentLine) {
                     content += `
-                                <tr>
-                                    <td colspan="${isRoctec ? 5 : 3}" style="background-color: ${lines[train.line.toLowerCase()].color}; color: white; font-weight: bold; padding: 5px; border: 1px solid #ddd;">
-                                        ${lines[train.line.toLowerCase()].name}
-                                    </td>
-                                </tr>`;
+                        <tr>
+                            <td colspan="${isRoctec ? 5 : 3}" class="line-header text-white font-bold" style="background-color: ${lines[train.line.toLowerCase()].color};">
+                                ${lines[train.line.toLowerCase()].name}
+                            </td>
+                        </tr>`;
                     currentLine = train.line;
                     currentColor = '#FFFFFF';
                 }
                 const destText = stations[train.destination.toLowerCase()] ?? train.destination;
-                let destHtml = `
-                            <td style="border: 1px solid #ddd; padding: 5px;">
-                                ${destText}
-                            </td>`;
+                let destHtml = `<td class="table-cell">${destText}</td>`;
 
                 if (isRoctec && (train.line === "EAL" || train.line === "NSL")) {
                     const isRace = /[BGKN]/.test(train.trip);
                     destHtml = `
-                                <td style="border: 1px solid #ddd; padding: 5px; max-width: 150px; overflow: hidden;">
-                                    <div class="marquee-container">
-                                        <div class="marquee-text">
-                                            ${isRace ? destText + ' via Racecourse' : destText}
-                                        </div>
-                                    </div>
-                                </td>`;
+                        <td class="table-cell data-cell-marquee">
+                            <div class="marquee-container">
+                                <div class="marquee-text">
+                                    ${isRace ? destText + ' via Racecourse' : destText}
+                                </div>
+                            </div>
+                        </td>`;
                 }
 
                 content += `
-                            <tr style="background-color: ${currentColor};">
-                                ${destHtml}
-                                ${isRoctec ? `
-                                    <td style="border: 1px solid #ddd; padding: 5px;">${train.trip}</td>
-                                    <td style="border: 1px solid #ddd; padding: 5px;">${train.train}</td>
-                                ` : ''}
-                                <td style="border: 1px solid #ddd; padding: 5px;">${train.plat}</td>
-                                <td style="border: 1px solid #ddd; padding: 5px;">${train.ttnt}</td>
-                            </tr>`;
+                    <tr style="background-color: ${currentColor};">
+                        ${destHtml}
+                        ${isRoctec ? `
+                            <td class="table-cell">${train.trip}</td>
+                            <td class="table-cell">${train.train}</td>
+                        ` : ''}
+                        <td class="table-cell">${train.plat}</td>
+                        <td class="table-cell">${train.ttnt}</td>
+                    </tr>`;
 
                 currentColor = currentColor === '#FFFFFF' ? '#C5D9E4' : '#FFFFFF';
             });
 
             content += `
-                                </tbody>
-                            </table>
-                            <div style="text-align: center; margin-top: 10px;">
-                                <button id="toggleBtn" style="color: black; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer; font-size: 18px;">${isRoctec ? 'NEXT TRAIN' : 'ROCTEC'}</button>
-                            </div>
-                        </div>
-                    `;
+                        </tbody>
+                    </table>
+                    <div class="toggle-btn-container text-center">
+                        <button id="toggleBtn" class="toggle-btn pointer">${isRoctec ? 'NEXT TRAIN' : 'ROCTEC'}</button>
+                    </div>
+                </div>
+            `;
 
             openedWindow.setContent(content);
             const btn = document.getElementById('toggleBtn');
@@ -564,9 +514,7 @@ async function updateStationData(station, data, type) {
         };
 
         requestAnimationFrame(() => {
-            google.maps.event.addListenerOnce(openedWindow, 'domready', () => {
-                renderTable(openedType === "Roctec");
-            });
+            google.maps.event.addListenerOnce(openedWindow, 'domready', () => renderTable(openedType === "Roctec"));
         });
 
         if (openedType === type) renderTable(type === "Roctec");
@@ -605,8 +553,8 @@ async function drawStations() {
 
         const [station, location] = entries[i];
         const element = Object.assign(document.createElement("div"), {
-            innerHTML: `<img src="public/${i <= 52 ? "station" : "mtr"}.png" alt="Station" style="width: 100px; height: 100px">`,
-            style: "position:absolute; transform: translate(-50%, -50%)"
+            innerHTML: `<img src="public/${i <= 52 ? "station" : "mtr"}.png" alt="Station" class="marker-icon">`,
+            className: "station-marker-wrapper"
         });
 
         const stationMarker = new AdvancedMarkerElement({
@@ -622,12 +570,12 @@ async function drawStations() {
         // Create the InfoWindow
         const infoWindow = new google.maps.InfoWindow({
             content: `
-                        <div style="font-family: Arial, sans-serif; font-size: 24px; width: 550px;">
-                            <div style="font-size: 32px; font-weight: bold; text-align: center;">
-                                ${stations[station.toLowerCase()]}
-                            </div>
-                        </div>
-                    `,
+                <div class="info-window-container">
+                    <div class="info-window-title font-bold text-center">
+                        ${stations[station.toLowerCase()]}
+                    </div>
+                </div>
+            `,
             maxWidth: 1000,
             pixelOffset: new google.maps.Size(0, -50)
         });
@@ -704,18 +652,14 @@ function convertTMLStationOrder(code) {
         41: 19, 42: 20, 43: 21, 44: 22, 45: 23, 46: 24, 47: 25, 48: 26, 49: 27, 50: 18,
         61: 15, 62: 14, 63: 13, 64: 12, 65: 11, 66: 10
     };
-
     return stationMap[code] ?? 0;
 }
 
 function getTMLStationDistance(curr, next, distanceFromCurrentStation) {
     const upDist = [1300, 1080, 1110, 2870, 750, 1140, 960, 800, 1290, 4460, 1260, 1010, 1140, 1040, 780, 1130, 1710, 2770, 2410, 4390, 8930, 3540, 1040, 2340, 4950, 2100];
     const dnDist = [0, ...upDist];
-
     const isUp = convertTMLStationOrder(curr) < convertTMLStationOrder(next);
-
     const stationList = lines.tml.stations.toUpperCase().split(" ");
-
 
     const currIndex = stationList.findIndex(s => s.toUpperCase() === tmlStationMap[curr]);
     const nextIndex = stationList.findIndex(s => s.toUpperCase() === tmlStationMap[next]);
@@ -739,7 +683,6 @@ function getClosestSector(latLng, line, isSpur) {
     // Loop through all sectors, omit the last one as it must be the ending point
     for (let i = 0; i < sectorPoints.length - 1; i++) {
         const segmentLength = spherical.computeDistanceBetween(sectorPoints[i], sectorPoints[i + 1]);
-
         const steps = Math.max(5, Math.ceil(segmentLength / 20));
 
         for (let j = 0; j <= steps; j++) {
@@ -757,7 +700,6 @@ function getClosestSector(latLng, line, isSpur) {
 
 function getAllSectorPointsBetween(from, to, line, isSpur) {
     let sectorPoints = line === "EAL" ? (isSpur ? eal_lmc : eal_low).concat(eal_main) : tml_main;
-
     let fromSector = getClosestSector(from, line, isSpur);
     let toSector = getClosestSector(to, line, isSpur);
 
@@ -768,14 +710,15 @@ function getAllSectorPointsBetween(from, to, line, isSpur) {
     // Get the starting point of from's sector, then retrieve the index of it
     let start = sectorPoints.indexOf(fromSector[1]);
     // Get the ending point of to's sector, then retrieve the index of it
-    let end = sectorPoints.indexOf(toSector[0])
-
+    let end = sectorPoints.indexOf(toSector[0]);
     let swapped = false;
+
     if (start > end) {
         swapped = true;
         start = sectorPoints.indexOf(toSector[1]);
         end = sectorPoints.indexOf(fromSector[0]);
     }
+
     let res = [swapped ? to : from];
     // Loop through all sector point between start and end
     for (let i = start; i <= end; i++) {
@@ -813,21 +756,19 @@ function getTrainAt(trip, line) {
 
     // Is this LMC Spur sector
     const isSpur = currentStationCode === 14 || destinationStationCode === 14 || nextStationCode === 14;
-
     const cacheKey = `${line}-${currentStationCode}-${nextStationCode}-${isSpur}`;
 
     // If this sector does not exist in cache, add to it
     if (!trainPathCache[cacheKey]) {
         const sectors = getAllSectorPointsBetween(currLatLng, nextLatLng, line, isSpur);
         const totalLength = spherical.computeLength(sectors);
-
         const cumulativeDistances = [0];
         let currentDist = 0;
+
         for (let i = 0; i < sectors.length - 1; i++) {
             currentDist += spherical.computeDistanceBetween(sectors[i], sectors[i + 1]);
             cumulativeDistances.push(currentDist);
         }
-
         trainPathCache[cacheKey] = {sectors, totalLength, cumulativeDistances};
     }
 
@@ -842,7 +783,6 @@ function getTrainAt(trip, line) {
     // Find which sector the train is in
     for (let i = 0; i < cachedData.sectors.length - 1; i++) {
         const distance = cachedData.cumulativeDistances[i + 1] - cachedData.cumulativeDistances[i];
-
         if (cachedData.cumulativeDistances[i] + distance >= lengthBetweenCurrAndNext) {
             sector = [cachedData.sectors[i], cachedData.sectors[i + 1]];
             elapsedDistance = cachedData.cumulativeDistances[i];
@@ -852,7 +792,6 @@ function getTrainAt(trip, line) {
     }
 
     if (segmentDistance === 0) return sector[0];
-
     return spherical.interpolate(sector[0], sector[1], (lengthBetweenCurrAndNext - elapsedDistance) / segmentDistance);
 }
 
@@ -886,38 +825,38 @@ async function updateEALTrainLocations(data) {
                 const destinationStationCode = ealStationMap[dsc] || 'Unknown';
 
                 // Update marker info window content
-                return `<div style="font-family: Arial, sans-serif; width: 750px; height: 80px; font-size: 24px; padding: 10px; border: 2px solid #ccc; background-color: white;">
-                    <div style="font-weight: bold; font-size: 28px; margin-bottom: 10px; display: flex; justify-content: center; align-items: center;">
+                return `<div class="train-info-container">
+                    <div class="train-info-title font-bold text-center flex-center">
                         ${trainId} (T${Math.floor(trainId / 3)}) ${td} ${currentStationCode} to ${nextStationCode} (${destinationStationCode}) ${trainSpeed}km/h
-                    </div><div style="display: flex; justify-content: center; align-items: center; gap: 4px;">
-                        <div style="color: gray; font-size: 24px;">&#x25C0;</div>
+                    </div><div class="train-info-cars-wrapper flex-center">
+                        <div class="train-info-direction">&#x25C0;</div>
                         ${(isUp ? listCars : [...listCars].reverse()).map((car, idx) => {
                     const isFirstCl = (isUp && idx === 3) || (!isUp && idx === 5);
                     const bg = car.passengerCount < (isFirstCl ? 70 : 110) ? '#4CAF50' : car.passengerCount < (isFirstCl ? 150 : 250) ? '#CDDC39' : '#F44336';
-                    return `<div style="background-color: ${bg}; color: ${isFirstCl ? '#880015' : 'white'}; display: flex; justify-content: center; align-items: center; width: 40px; height: 28px; padding: 4px 10px; border-radius: 6px;">${car.passengerCount}</div>`;
+                    return `<div class="train-info-car flex-center ${isFirstCl ? 'car-text-red' : 'text-white'}" style="background-color: ${bg};">${car.passengerCount}</div>`;
                 }).join('')}
                     </div></div>`;
             };
+
+            const isNis = csc === 0 || Date.now() / 1000 - receivedTime > 60 || !isPassengerTrain(td);
 
             if (trainMarkers[trainId]) {
                 // Update existing marker position
                 trainMarkers[trainId].position = position;
                 trainMarkers[trainId].map = currentVisibility.trains.EAL ? map : null;
 
-                const isNis = csc === 0 || Date.now() / 1000 - receivedTime > 60 || !isPassengerTrain(td);
                 const imgElement = trainMarkers[trainId].content.querySelector('img');
                 const newSrc = `public/r_train_${isNis ? 'unknown' : (isUp ? 'up' : 'dn')}.png`;
-                if (!imgElement.src.includes(newSrc))
-                    imgElement.src = newSrc;
-                imgElement.style.opacity = (isNis && csc === 0) ? '0.5' : '1';
 
-                // If the info window for this marker is open, update its content
+                if (!imgElement.src.includes(newSrc)) imgElement.src = newSrc;
+                if (isNis && csc === 0) imgElement.classList.add('opacity-50');
+                else imgElement.classList.remove('opacity-50');
+
                 if (openedWindow?.associatedMarker === trainMarkers[trainId])
                     openedWindow.setContent(getHtmlContent());
             } else {
                 const element = document.createElement("div");
-                const isNis = csc === 0 || Date.now() / 1000 - receivedTime > 60 || !isPassengerTrain(td);
-                element.innerHTML = `<img src="public/r_train_${isNis ? 'unknown' : (isUp ? 'up' : 'dn')}.png" style="width: 100px; height: 100px; display: block; margin: 0 auto; ${isNis && csc === 0 ? 'opacity: 0.5;' : ''}">`;
+                element.innerHTML = `<img src="public/r_train_${isNis ? 'unknown' : (isUp ? 'up' : 'dn')}.png" class="marker-icon train-marker-icon ${isNis && csc === 0 ? 'opacity-50' : ''}">`;
 
                 const trainMarker = new AdvancedMarkerElement({
                     position,
@@ -937,8 +876,7 @@ async function updateEALTrainLocations(data) {
 
                 // Attach a click event listener using native DOM methods
                 trainMarker.addListener('gmp-click', () => {
-                    if (openedWindow)
-                        openedWindow.close();
+                    if (openedWindow) openedWindow.close();
 
                     infoWin.setContent(getHtmlContent());
                     infoWin.open(map, trainMarker);
@@ -946,10 +884,8 @@ async function updateEALTrainLocations(data) {
                     openedWindow = infoWin;
 
                     allMarkers.forEach(m => {
-                        if (m.zIndex <= trainMarker.zIndex)
-                            m.zIndex++;
-                        if (m.zIndex === 0)
-                            m.zIndex = trainMarker.zIndex;
+                        if (m.zIndex <= trainMarker.zIndex) m.zIndex++;
+                        if (m.zIndex === 0) m.zIndex = trainMarker.zIndex;
                     });
                     trainMarker.zIndex = 0;
                 });
@@ -993,31 +929,32 @@ async function updateTMLTrainLocations(data) {
                 const nextStationCode = tmlStationMap[nsc] || nsc;
                 const destinationStationCode = tmlStationMap[dsc] || nsc;
 
-                return `<div style="font-family: Arial, sans-serif; width: 750px; height: 80px; font-size: 24px; padding: 10px; border: 2px solid #ccc; background-color: white;">
-                    <div style="font-weight: bold; font-size: 28px; margin-bottom: 10px; display: flex; justify-content: center; align-items: center;">
+                return `<div class="train-info-container">
+                    <div class="train-info-title font-bold text-center flex-center">
                         ${trainId} ${currentStationCode} to ${nextStationCode} (${destinationStationCode}) ${trainSpeed}km/h
-                    </div><div style="display: flex; justify-content: center; align-items: center; gap: 4px;">
-                        <div style="color: gray; font-size: 24px;">&#x25C0;</div>
+                    </div><div class="train-info-cars-wrapper flex-center">
+                        <div class="train-info-direction">&#x25C0;</div>
                         ${(!isUp ? listCars : [...listCars].reverse()).map(car => {
                     const bg = car.passengerCount < 110 ? '#4CAF50' : car.passengerCount < 250 ? '#CDDC39' : '#F44336';
-                    return `<div style="background-color: ${bg}; color: white; display: flex; justify-content: center; align-items: center; width: 40px; height: 28px; padding: 4px 10px; border-radius: 6px;">${car.passengerCount ?? '-'}</div>`;
+                    return `<div class="train-info-car flex-center text-white" style="background-color: ${bg};">${car.passengerCount ?? '-'}</div>`;
                 }).join('')}
                     </div></div>`;
             };
+
+            const isNis = csc === 0 || Date.now() / 1000 - receivedTime > 60;
+            const prefix = train_type === "SP1900" ? "sp1900" : "t1141a";
 
             if (trainMarkers[trainId]) {
                 // Update existing marker position
                 trainMarkers[trainId].position = position;
                 trainMarkers[trainId].map = currentVisibility.trains.TML ? map : null;
 
-                const isNis = csc === 0 || Date.now() / 1000 - receivedTime > 60;
-                const prefix = train_type === "SP1900" ? "sp1900" : "t1141a";
                 const imgElement = trainMarkers[trainId].content.querySelector('img');
                 const newSrc = `public/${prefix}_${isNis ? 'unknown' : (isUp ? 'dn' : 'up')}.png`;
-                if (!imgElement.src.includes(newSrc))
-                    imgElement.src = newSrc;
 
-                imgElement.style.opacity = (isNis && csc === 0) ? '0.5' : '1';
+                if (!imgElement.src.includes(newSrc)) imgElement.src = newSrc;
+                if (isNis && csc === 0) imgElement.classList.add('opacity-50');
+                else imgElement.classList.remove('opacity-50');
 
                 // If the info window for this marker is open, update its content
                 if (openedWindow?.associatedMarker === trainMarkers[trainId]) {
@@ -1025,11 +962,8 @@ async function updateTMLTrainLocations(data) {
                 }
             } else {
                 const element = document.createElement("div");
-                element.style.willChange = "transform, opacity";
-                element.style.transform = "translateZ(0)";
-                const isNis = csc === 0 || Date.now() / 1000 - receivedTime > 60;
-                const prefix = train_type === "SP1900" ? "sp1900" : "t1141a";
-                element.innerHTML = `<img src="public/${prefix}_${isNis ? 'unknown' : (isUp ? 'dn' : 'up')}.png" style="width: 100px; height: 100px; display: block; margin: 0 auto; ${isNis && csc === 0 ? 'opacity: 0.5;' : ''}">`;
+                element.className = "tml-train-marker-wrapper";
+                element.innerHTML = `<img src="public/${prefix}_${isNis ? 'unknown' : (isUp ? 'dn' : 'up')}.png" class="marker-icon train-marker-icon ${isNis && csc === 0 ? 'opacity-50' : ''}">`;
 
                 const trainMarker = new AdvancedMarkerElement({
                     position,
@@ -1049,8 +983,7 @@ async function updateTMLTrainLocations(data) {
 
                 // Attach a click event listener using native DOM methods
                 trainMarker.addListener('gmp-click', () => {
-                    if (openedWindow)
-                        openedWindow.close();
+                    if (openedWindow) openedWindow.close();
 
                     infoWin.setContent(getHtmlContent());
                     infoWin.open(map, trainMarker);
@@ -1058,10 +991,8 @@ async function updateTMLTrainLocations(data) {
                     openedWindow = infoWin;
 
                     allMarkers.forEach(m => {
-                        if (m.zIndex <= trainMarker.zIndex)
-                            m.zIndex++;
-                        if (m.zIndex === 0)
-                            m.zIndex = trainMarker.zIndex;
+                        if (m.zIndex <= trainMarker.zIndex) m.zIndex++;
+                        if (m.zIndex === 0) m.zIndex = trainMarker.zIndex;
                     });
                     trainMarker.zIndex = 0;
                 });
