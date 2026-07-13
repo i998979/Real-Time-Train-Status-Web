@@ -1,0 +1,10 @@
+{
+  "web_apps": [
+    {
+      "manifest": "https://transitapp-6c6.pages.dev/portal.webmanifest",
+      "details": {
+        "scope": "/"
+      }
+    }
+  ]
+}
