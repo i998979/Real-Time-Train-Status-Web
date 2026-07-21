@@ -7,8 +7,7 @@
     <meta name="viewport" content="user-scalable=no">
     <meta name="google-adsense-account" content="ca-pub-6947410316535208">
 
-    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6947410316535208"
-            crossorigin="anonymous"></script>
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6947410316535208" crossorigin="anonymous"></script>
 
     <link rel="icon" type="image/png" href="/public/favicon-96x96.png" sizes="96x96"/>
     <link rel="icon" type="image/svg+xml" href="/public/favicon.svg"/>
@@ -18,8 +17,11 @@
 
     <link rel="stylesheet" href="style.css">
 
-    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBMdA0Y-aPnvwfJ57FHh3kvZwFf3WbMZIw&libraries=maps"
-            defer></script>
+    <!-- 替換為 MapLibre GL JS 與 Turf.js -->
+    <script src="https://unpkg.com/maplibre-gl/dist/maplibre-gl.js"></script>
+    <link href="https://unpkg.com/maplibre-gl/dist/maplibre-gl.css" rel="stylesheet" />
+    <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
     <script>
         function encryptInput(input, key) {
@@ -64,6 +66,17 @@
 <body>
 
 <button id="toggleMenuBtn" class="menu-toggle-btn pointer font-bold">Display Setting</button>
+
+<!-- 新增 OpenFreeMap 樣式選擇器 -->
+<select id="styleSelector" class="style-selector">
+    <option value="positron">Positron</option>
+    <option value="bright">Bright</option>
+    <option value="liberty" selected>Liberty</option>
+    <option value="dark">Dark</option>
+    <option value="fiord">Fiord</option>
+    <option value="3d">3D (Liberty)</option>
+</select>
+
 <div id="visMenuOverlay" class="menu-overlay">
     <div class="menu-modal">
         <h3 class="menu-header text-center">Display Setting</h3>

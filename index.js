@@ -28,7 +28,16 @@ let currentVisibility = savedVisibility ? JSON.parse(savedVisibility) : JSON.par
 
 let apiUrl;
 
-// On page load
+// 動態注入 MapLibre 樣式修復 (去除預設 Padding、修正 Cursor、縮小可點擊範圍)
+const style = document.createElement('style');
+style.innerHTML = `
+    .maplibregl-popup-content { padding: 0 !important; background: transparent !important; box-shadow: none !important; pointer-events: auto; }
+    .maplibregl-popup-close-button { right: 8px !important; top: 8px !important; color: #fff !important; font-size: 20px !important; z-index: 1000; font-weight: bold; background: rgba(0,0,0,0.3) !important; border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; }
+    .maplibregl-popup-tip { display: none !important; }
+    .maplibregl-marker { cursor: pointer !important; width: max-content; height: max-content; }
+`;
+document.head.appendChild(style);
+
 window.addEventListener("DOMContentLoaded", async () => {
     const urlParams = new URLSearchParams(window.location.search);
 
@@ -72,18 +81,14 @@ let hkoInterval = null, hkoController = null;
 
 let openedStation = null, openedWindow = null, openedType = "Roctec";
 
-// Add event listener for visibility change
 document.addEventListener("visibilitychange", async () => {
     if (document.visibilityState === "visible") {
-        console.log("Tab is active. Starting fetch interval.");
-
         if (!trainInterval) {
             await fetchTrainData();
             trainInterval = setInterval(fetchTrainData, 5000);
         }
-        if (openedWindow) {
+        if (openedWindow && openedStation) {
             clearInterval(stationInterval);
-
             await fetchNextTrain(openedStation);
             await fetchRoctec(openedStation);
             stationInterval = setInterval(() => {
@@ -92,10 +97,7 @@ document.addEventListener("visibilitychange", async () => {
             }, 5000);
         }
     }
-    // Cancel any ongoing train fetch and schedule
     else {
-        console.log("Tab is inactive. Clearing fetch interval and aborting fetch.");
-
         [trainInterval, stationInterval, hkoInterval].forEach(i => i && clearInterval(i));
         [trainController, rtController, ntController, hkoController].forEach(c => c && c.abort());
         trainInterval = stationInterval = hkoInterval = null;
@@ -103,15 +105,23 @@ document.addEventListener("visibilitychange", async () => {
     }
 });
 
-let map, spherical, AdvancedMarkerElement;
+let map, spherical;
 let ealData, tmlData, ktlData, islData, twlData, tklData, tclData;
 let weatherIcons = [], temperature = null;
+let allMarkers = [];
 
-// Initialize the map
 async function initMap() {
-    const {Map} = await google.maps.importLibrary("maps");
-    spherical = (await google.maps.importLibrary("geometry")).spherical;
-    AdvancedMarkerElement = (await google.maps.importLibrary("marker")).AdvancedMarkerElement;
+    spherical = {
+        computeDistanceBetween: (a, b) => turf.distance([a.lng, a.lat], [b.lng, b.lat], {units: 'meters'}),
+        computeLength: (path) => turf.length(turf.lineString(path.map(p => [p.lng, p.lat])), {units: 'meters'}),
+        interpolate: (a, b, fraction) => {
+            if (a.lat === b.lat && a.lng === b.lng) return a;
+            const line = turf.lineString([[a.lng, a.lat], [b.lng, b.lat]]);
+            const length = turf.length(line, {units: 'meters'});
+            const pt = turf.along(line, length * fraction, {units: 'meters'});
+            return {lat: pt.geometry.coordinates[1], lng: pt.geometry.coordinates[0]};
+        }
+    };
 
     let center = stationLoc["HTD"];
     let zoom = 12;
@@ -122,73 +132,90 @@ async function initMap() {
             const parsed = JSON.parse(savedView);
             center = {lat: parsed.lat, lng: parsed.lng};
             zoom = parsed.zoom;
-        } catch (e) {
-        }
+        } catch (e) {}
     }
 
-    map = new Map(document.getElementById("map"), {
-        center: center,
+    const initialStyle = document.getElementById("styleSelector")?.value || "liberty";
+    const styleUrl = initialStyle === "3d" ? "https://tiles.openfreemap.org/styles/liberty" : `https://tiles.openfreemap.org/styles/${initialStyle}`;
+
+    map = new maplibregl.Map({
+        container: "map",
+        style: styleUrl,
+        center: [center.lng, center.lat],
         zoom: zoom,
-        mapId: '7588c4bd46aa102a',
-        streetViewControl: false,
-        clickableIcons: false,
-        gestureHandling: "greedy"
+        pitch: initialStyle === "3d" ? 60 : 0
     });
 
-    map.addListener("click", () => {
+    map.on("click", () => {
+        // 修復：移除時只呼叫 remove()，剩餘清除工作交由 pop 的 'close' 事件處理，避免發生 null properties error
         if (openedWindow) {
-            openedWindow.close();
-
-            if (stationInterval) clearInterval(stationInterval);
-            if (rtController) rtController.abort();
-            if (ntController) ntController.abort();
-
-            if (openedWindow.associatedMarker) openedWindow.associatedMarker = null;
-
-            openedWindow = null;
-            openedStation = null;
-            stationInterval = null;
-            rtController = null;
-            ntController = null;
-
-            roctecTrainData = ntTrainData = [];
-            roctecLastUpdate = ntLastUpdate = "Never";
+            openedWindow.remove();
         }
     });
 
-    map.addListener("idle", () => {
+    map.on("moveend", () => {
         const center = map.getCenter();
-        const settings = {
-            lat: center.lat(),
-            lng: center.lng(),
-            zoom: map.getZoom()
-        };
+        const settings = { lat: center.lat, lng: center.lng, zoom: map.getZoom() };
         localStorage.setItem("last_map_view", JSON.stringify(settings));
     });
 
-    await drawLines();
-    await drawStations();
+    const loadMapData = async () => {
+        if (document.getElementById("styleSelector")?.value === "3d" && !map.getLayer('3d-buildings')) {
+            map.addLayer({
+                'id': '3d-buildings',
+                'source': 'openmaptiles',
+                'source-layer': 'building',
+                'type': 'fill-extrusion',
+                'minzoom': 13,
+                'paint': {
+                    'fill-extrusion-color': '#aaa',
+                    'fill-extrusion-height': ['get', 'render_height'],
+                    'fill-extrusion-base': ['get', 'render_min_height'],
+                    'fill-extrusion-opacity': 0.8
+                }
+            });
+        }
+        await drawLines();
+        applyVisibility();
+    };
 
-    Object.keys(drawnPolylines).forEach(line => (drawnPolylines[line] || []).forEach(p => p.setMap(currentVisibility.lines[line] ? map : null)));
+    map.on('load', async () => {
+        await drawStations();
+        await loadMapData();
+        setupDisplayMenu();
+
+        document.getElementById('toggleMenuBtn').classList.add('visible');
+
+        if (!trainInterval) {
+            await fetchTrainData();
+            trainInterval = setInterval(fetchTrainData, 5000);
+        }
+        await fetchHKOData();
+        hkoInterval = setInterval(fetchHKOData, 60000);
+    });
+
+    document.getElementById("styleSelector")?.addEventListener("change", (e) => {
+        const val = e.target.value;
+        const url = val === "3d" ? "https://tiles.openfreemap.org/styles/liberty" : `https://tiles.openfreemap.org/styles/${val}`;
+        map.setStyle(url);
+        map.setPitch(val === "3d" ? 60 : 0);
+        map.once('styledata', loadMapData);
+    });
+}
+
+function applyVisibility() {
+    Object.keys(drawnPolylines).forEach(line => (drawnPolylines[line] || []).forEach(p => p.setMap(currentVisibility.lines[line])));
+
     Object.keys(stationMarkers).forEach(station => {
         const isVisible = Object.keys(currentVisibility.lines).some(lineKey =>
             currentVisibility.lines[lineKey] && lines[lineKey] && lines[lineKey].stations && lines[lineKey].stations.split(" ").includes(station.toLowerCase())
         );
-        stationMarkers[station].map = isVisible ? map : null;
+        if (stationMarkers[station]) stationMarkers[station].getElement().style.display = isVisible ? 'block' : 'none';
     });
 
-    setupDisplayMenu();
-
-    document.getElementById('toggleMenuBtn').classList.add('visible');
-
-    // Start fetching train data if not scheduled
-    if (!trainInterval) {
-        await fetchTrainData();
-        trainInterval = setInterval(fetchTrainData, 5000);
-    }
-
-    await fetchHKOData();
-    hkoInterval = setInterval(fetchHKOData, 60000);
+    Object.values(trainMarkers).forEach(m => {
+        if (m.customLineType) m.getElement().style.display = currentVisibility.trains[m.customLineType] ? 'block' : 'none';
+    });
 }
 
 function setupDisplayMenu() {
@@ -199,23 +226,12 @@ function setupDisplayMenu() {
         if (e.target.tagName === 'INPUT') {
             currentVisibility[e.target.dataset.type][e.target.dataset.key] = e.target.checked;
             localStorage.setItem('map_visibility', JSON.stringify(currentVisibility));
-
-            Object.keys(drawnPolylines).forEach(line => (drawnPolylines[line] || []).forEach(p => p.setMap(currentVisibility.lines[line] ? map : null)));
-            Object.values(trainMarkers).forEach(m => {
-                if (m.customLineType) m.map = currentVisibility.trains[m.customLineType] ? map : null;
-            });
-            Object.keys(stationMarkers).forEach(station => {
-                const isVisible = Object.keys(currentVisibility.lines).some(lineKey =>
-                    currentVisibility.lines[lineKey] && lines[lineKey] && lines[lineKey].stations && lines[lineKey].stations.split(" ").includes(station.toLowerCase())
-                );
-                stationMarkers[station].map = isVisible ? map : null;
-            });
+            applyVisibility();
         }
     });
 
     document.getElementById('toggleMenuBtn').addEventListener('click', () => {
         visCheckboxes.innerHTML = '';
-
         Object.keys(currentVisibility.lines).forEach(line => {
             const lineInfo = lines[line.toLowerCase()] || {name: line.toUpperCase(), color: '#777'};
             visCheckboxes.insertAdjacentHTML('beforeend', `
@@ -254,17 +270,11 @@ function setupDisplayMenu() {
         Object.keys(currentVisibility.lines).forEach(k => currentVisibility.lines[k] = true);
         Object.keys(currentVisibility.trains).forEach(k => currentVisibility.trains[k] = true);
         localStorage.setItem('map_visibility', JSON.stringify(currentVisibility));
-
         document.getElementById('toggleMenuBtn').click();
-        Object.keys(drawnPolylines).forEach(line => (drawnPolylines[line] || []).forEach(p => p.setMap(map)));
-        Object.values(trainMarkers).forEach(m => {
-            if (m.customLineType) m.map = map;
-        });
-        Object.values(stationMarkers).forEach(m => m.map = map);
+        applyVisibility();
     });
 }
 
-// Fetch train location from callback
 async function fetchTrainData() {
     try {
         if (trainController) trainController.abort();
@@ -278,21 +288,19 @@ async function fetchTrainData() {
                 .then(res => res.ok ? res.json() : Promise.reject(`${line} fetch failed`))
         ));
 
-        // Update train locations
         await Promise.all([
             updateEALTrainLocations(ealData),
             updateTMLTrainLocations(tmlData)
         ]);
     } catch (e) {
-        if (e.name !== "AbortError")
-            console.error("Train data fetch error:", e);
+        if (e.name !== "AbortError") console.error("Train data fetch error:", e);
     } finally {
         trainController = null;
     }
 }
 
-// Fetch Roctec data from API
 async function fetchRoctec(station) {
+    if (!station) return;
     try {
         if (rtController) rtController.abort();
         rtController = new AbortController();
@@ -308,8 +316,8 @@ async function fetchRoctec(station) {
     }
 }
 
-// Fetch NextTrain data from API
 async function fetchNextTrain(station) {
+    if (!station) return; // 修復 null.toLowerCase() 報錯
     try {
         if (ntController) ntController.abort();
         ntController = new AbortController();
@@ -380,7 +388,6 @@ async function updateStationData(station, data, type) {
             for (const plat in data.line[line]) {
                 for (const train in data.line[line][plat]) {
                     const trip = data.line[line][plat][train];
-
                     let train0 = "-";
                     if (line === "EAL" || line === "NSL") {
                         train0 = ealData?.find(t => t.td === trip.td)?.trainId || "-";
@@ -397,14 +404,7 @@ async function updateStationData(station, data, type) {
                         });
                         train0 = match ? (line === "TKL" ? match.trainId : match.trainConsist) : "-";
                     }
-                    roctecTrainData.push({
-                        line,
-                        plat,
-                        destination: trip.destination,
-                        trip: trip.td,
-                        train: train0,
-                        ttnt: trip.ttnt
-                    });
+                    roctecTrainData.push({ line, plat, destination: trip.destination, trip: trip.td, train: train0, ttnt: trip.ttnt });
                 }
             }
         }
@@ -415,10 +415,7 @@ async function updateStationData(station, data, type) {
             const line = ln.split("-")[0];
             ["UP", "DOWN"].forEach(dir => {
                 data.data[ln][dir]?.forEach(trip => ntTrainData.push({
-                    line,
-                    plat: trip.plat,
-                    destination: trip.dest,
-                    ttnt: trip.ttnt
+                    line, plat: trip.plat, destination: trip.dest, ttnt: trip.ttnt
                 }));
             });
         }
@@ -477,14 +474,10 @@ async function updateStationData(station, data, type) {
                 content += `
                     <tr style="background-color: ${currentColor};">
                         ${destHtml}
-                        ${isRoctec ? `
-                            <td class="table-cell">${train.trip}</td>
-                            <td class="table-cell">${train.train}</td>
-                        ` : ''}
+                        ${isRoctec ? `<td class="table-cell">${train.trip}</td><td class="table-cell">${train.train}</td>` : ''}
                         <td class="table-cell">${train.plat}</td>
                         <td class="table-cell">${train.ttnt}</td>
                     </tr>`;
-
                 currentColor = currentColor === '#FFFFFF' ? '#C5D9E4' : '#FFFFFF';
             });
 
@@ -496,55 +489,100 @@ async function updateStationData(station, data, type) {
                     </div>
                 </div>
             `;
+            openedWindow.setHTML(content);
 
-            openedWindow.setContent(content);
             const btn = document.getElementById('toggleBtn');
-            btn.onclick = () => {
-                openedType = isRoctec ? "NextTrain" : "Roctec";
-                renderTable(!isRoctec);
-            };
-
+            if (btn) {
+                btn.onclick = () => {
+                    openedType = isRoctec ? "NextTrain" : "Roctec";
+                    renderTable(!isRoctec);
+                };
+            }
             if (isRoctec) {
                 document.querySelectorAll('.marquee-container').forEach(c => {
                     const t = c.querySelector('.marquee-text');
-                    if (t && t.scrollWidth > c.clientWidth)
-                        t.classList.add('marquee-animate');
+                    if (t && t.scrollWidth > c.clientWidth) t.classList.add('marquee-animate');
                 });
             }
         };
-
-        requestAnimationFrame(() => {
-            google.maps.event.addListenerOnce(openedWindow, 'domready', () => renderTable(openedType === "Roctec"));
-        });
-
-        if (openedType === type) renderTable(type === "Roctec");
+        renderTable(openedType === "Roctec");
     }
 }
 
 async function drawLines() {
+    drawnPolylines = {};
     [
         {path: eal_main, name: 'eal'}, {path: eal_rac, name: 'eal'}, {path: eal_low, name: 'eal'},
         {path: eal_lmc, name: 'eal'}, {path: tml_main, name: 'tml'}, {path: ktl_main, name: 'ktl'},
         {path: ael_main, name: 'ael'}, {path: drl_main, name: 'drl'}, {path: isl_main, name: 'isl'},
         {path: tcl_main, name: 'tcl'}, {path: tkl_main, name: 'tkl'}, {path: tkl_lhp, name: 'tkl'},
         {path: twl_main, name: 'twl'}, {path: sil_main, name: 'sil'}
-    ].forEach(({path, name}) => {
-        const polyline = new google.maps.Polyline({
-            path,
-            geodesic: false,
-            strokeColor: lines[name].color,
-            strokeOpacity: 1.0,
-            strokeWeight: 5
-        });
-        polyline.setMap(map);
+    ].forEach(({path, name}, index) => {
+        const sourceId = `line-source-${name}-${index}`;
+        const layerId = `line-layer-${name}-${index}`;
 
+        if (!map.getSource(sourceId)) {
+            map.addSource(sourceId, {
+                'type': 'geojson',
+                'data': {
+                    'type': 'Feature',
+                    'properties': {},
+                    'geometry': { 'type': 'LineString', 'coordinates': path.map(p => [p.lng, p.lat]) }
+                }
+            });
+            map.addLayer({
+                'id': layerId, 'type': 'line', 'source': sourceId,
+                'layout': { 'line-join': 'round', 'line-cap': 'round', 'visibility': currentVisibility.lines[name] ? 'visible' : 'none' },
+                'paint': { 'line-color': lines[name].color, 'line-width': 5 }
+            });
+        }
         if (!drawnPolylines[name]) drawnPolylines[name] = [];
-        drawnPolylines[name].push(polyline);
+        drawnPolylines[name].push({
+            setMap: (show) => {
+                if (map.getLayer(layerId)) map.setLayoutProperty(layerId, 'visibility', show ? 'visible' : 'none');
+            }
+        });
     });
 }
 
-// allMarkers for reordering zIndex
-let allMarkers = [];
+function handleMarkerInteractions(element, originalZIndex) {
+    element.originalZIndex = originalZIndex;
+    element.style.zIndex = originalZIndex;
+
+    // 修復 Marker 被覆蓋時無法點擊的問題（滑鼠懸停時置頂）
+    element.addEventListener('mouseenter', () => { element.style.zIndex = 9999; });
+    element.addEventListener('mouseleave', () => {
+        if (openedWindow?.associatedMarker?.getElement() !== element) {
+            element.style.zIndex = originalZIndex;
+        }
+    });
+}
+
+function setupInfoWindowClose(infoWindow) {
+    infoWindow.on('close', () => {
+        if (stationInterval) clearInterval(stationInterval);
+        if (rtController) rtController.abort();
+        if (ntController) ntController.abort();
+
+        infoWindow.associatedMarker = null;
+        openedStation = null;
+        openedWindow = null;
+        stationInterval = null;
+        rtController = null;
+        ntController = null;
+        roctecTrainData = ntTrainData = [];
+        roctecLastUpdate = ntLastUpdate = "Never";
+
+        allMarkers.forEach(m => {
+            if (m.getElement()) m.getElement().style.zIndex = m.getElement().originalZIndex || 100;
+        });
+    });
+
+    infoWindow.on('open', () => {
+        // 修復 InfoWindow 的層級問題 (永遠在最上層)
+        if(infoWindow.getElement()) infoWindow.getElement().style.zIndex = 10000;
+    });
+}
 
 async function drawStations() {
     const entries = Object.entries(stationLoc);
@@ -557,101 +595,57 @@ async function drawStations() {
             className: "station-marker-wrapper"
         });
 
-        const stationMarker = new AdvancedMarkerElement({
-            position: location,
-            map,
-            content: element,
-            gmpClickable: true,
-            zIndex: 100 + i
-        });
+        handleMarkerInteractions(element, 100 + i);
+
+        const stationMarker = new maplibregl.Marker({ element, anchor: 'center' })
+            .setLngLat([location.lng, location.lat])
+            .addTo(map);
+
         stationMarkers[station] = stationMarker;
         allMarkers.push(stationMarker);
 
-        // Create the InfoWindow
-        const infoWindow = new google.maps.InfoWindow({
-            content: `
-                <div class="info-window-container">
-                    <div class="info-window-title font-bold text-center">
-                        ${stations[station.toLowerCase()]}
-                    </div>
-                </div>
-            `,
-            maxWidth: 1000,
-            pixelOffset: new google.maps.Size(0, -50)
+        const infoWindow = new maplibregl.Popup({
+            maxWidth: '1000px',
+            offset: [0, -15], // 修復 InfoWindow 位置偏移問題
+            closeButton: true,
+            closeOnClick: false,
+            className: 'custom-popup'
         });
 
-        stationMarker.addListener('gmp-click', () => {
-            // Close window if there is an opened one
-            if (openedWindow) {
-                openedWindow.close();
-                openedWindow = null;
-            }
+        setupInfoWindowClose(infoWindow);
 
-            // Abort previous fetch and fetch schedule
-            [stationInterval].forEach(i => i && clearInterval(i));
-            [rtController, ntController].forEach(c => c && c.abort());
+        element.addEventListener('click', (e) => {
+            e.stopPropagation();
 
-            // Return if user clicked already opened marker
-            if (station === openedStation) {
-                openedStation = null;
-                infoWindow.associatedMarker = null;
-                return;
-            }
+            if (openedWindow) openedWindow.remove();
 
-            // Clear data if opened station isn't marker station
-            if (station !== openedStation) {
-                roctecTrainData = ntTrainData = [];
-                roctecLastUpdate = ntLastUpdate = "Never";
-            } else {
-                updateStationData(station, roctecTrainData, "Roctec");
-                updateStationData(station, ntTrainData, "NextTrain");
-            }
+            if (station === openedStation) return; // Toggle off
+
+            roctecTrainData = ntTrainData = [];
+            roctecLastUpdate = ntLastUpdate = "Never";
 
             infoWindow.associatedMarker = stationMarker;
             openedStation = station;
             openedWindow = infoWindow;
 
-            // Open new window
-            infoWindow.open({
-                anchor: stationMarker,
-                map,
-                shouldFocus: false
-            });
+            infoWindow.setHTML(`
+                <div class="info-window-container">
+                    <div class="info-window-title font-bold text-center">${stations[station.toLowerCase()]}</div>
+                </div>
+            `).setLngLat([location.lng, location.lat]).addTo(map);
 
-            // Fetch station data
             fetchNextTrain(station);
             fetchRoctec(station);
-            // Reschedule schedule fetch
-            stationInterval = setInterval(() => {
-                fetchNextTrain(station);
-                fetchRoctec(station);
-            }, 5000);
+            stationInterval = setInterval(() => { fetchNextTrain(station); fetchRoctec(station); }, 5000);
 
-            allMarkers.forEach(m => {
-                if (m.zIndex <= stationMarker.zIndex) m.zIndex++;
-                if (m.zIndex === 0) m.zIndex = stationMarker.zIndex;
-            });
-            stationMarker.zIndex = 0;
-
-            // Clear open status on close
-            infoWindow.addListener('closeclick', () => {
-                if (stationInterval) clearInterval(stationInterval);
-                if (rtController) rtController.abort();
-                if (ntController) ntController.abort();
-                infoWindow.associatedMarker = openedStation = openedWindow = stationInterval = rtController = ntController = null;
-                roctecTrainData = ntTrainData = [];
-                roctecLastUpdate = ntLastUpdate = "Never";
-            });
+            allMarkers.forEach(m => { if(m.getElement()) m.getElement().style.zIndex = m.getElement().originalZIndex || 100; });
+            element.style.zIndex = 9999;
         });
     }
 }
 
 function convertTMLStationOrder(code) {
-    const stationMap = {
-        1: 16, 14: 17, 21: 9, 22: 8, 23: 7, 24: 6, 25: 5, 26: 4, 27: 3, 28: 2, 29: 1,
-        41: 19, 42: 20, 43: 21, 44: 22, 45: 23, 46: 24, 47: 25, 48: 26, 49: 27, 50: 18,
-        61: 15, 62: 14, 63: 13, 64: 12, 65: 11, 66: 10
-    };
+    const stationMap = { 1: 16, 14: 17, 21: 9, 22: 8, 23: 7, 24: 6, 25: 5, 26: 4, 27: 3, 28: 2, 29: 1, 41: 19, 42: 20, 43: 21, 44: 22, 45: 23, 46: 24, 47: 25, 48: 26, 49: 27, 50: 18, 61: 15, 62: 14, 63: 13, 64: 12, 65: 11, 66: 10 };
     return stationMap[code] ?? 0;
 }
 
@@ -660,7 +654,6 @@ function getTMLStationDistance(curr, next, distanceFromCurrentStation) {
     const dnDist = [0, ...upDist];
     const isUp = convertTMLStationOrder(curr) < convertTMLStationOrder(next);
     const stationList = lines.tml.stations.toUpperCase().split(" ");
-
     const currIndex = stationList.findIndex(s => s.toUpperCase() === tmlStationMap[curr]);
     const nextIndex = stationList.findIndex(s => s.toUpperCase() === tmlStationMap[next]);
 
@@ -672,15 +665,10 @@ function isPassengerTrain(td) {
 }
 
 function getClosestSector(latLng, line, isSpur) {
-    // Retrieve all sector points
     let sectorPoints = line === "EAL" ? (isSpur ? eal_lmc : eal_low).concat(eal_main) : tml_main;
-
-    // Closest sector
     let closestSector = [];
-    // How close it is
     let closestDistance = Number.MAX_VALUE;
 
-    // Loop through all sectors, omit the last one as it must be the ending point
     for (let i = 0; i < sectorPoints.length - 1; i++) {
         const segmentLength = spherical.computeDistanceBetween(sectorPoints[i], sectorPoints[i + 1]);
         const steps = Math.max(5, Math.ceil(segmentLength / 20));
@@ -688,7 +676,6 @@ function getClosestSector(latLng, line, isSpur) {
         for (let j = 0; j <= steps; j++) {
             const fraction = j / steps;
             const dist = spherical.computeDistanceBetween(spherical.interpolate(sectorPoints[i], sectorPoints[i + 1], fraction), latLng);
-
             if (dist < closestDistance) {
                 closestDistance = dist;
                 closestSector = [sectorPoints[i], sectorPoints[i + 1]];
@@ -703,13 +690,9 @@ function getAllSectorPointsBetween(from, to, line, isSpur) {
     let fromSector = getClosestSector(from, line, isSpur);
     let toSector = getClosestSector(to, line, isSpur);
 
-    // If both "from" and "to" is in the same sector
     if (toSector.every(p => fromSector.includes(p))) return [from, to];
 
-    // If they are in different sector
-    // Get the starting point of from's sector, then retrieve the index of it
     let start = sectorPoints.indexOf(fromSector[1]);
-    // Get the ending point of to's sector, then retrieve the index of it
     let end = sectorPoints.indexOf(toSector[0]);
     let swapped = false;
 
@@ -720,10 +703,7 @@ function getAllSectorPointsBetween(from, to, line, isSpur) {
     }
 
     let res = [swapped ? to : from];
-    // Loop through all sector point between start and end
-    for (let i = start; i <= end; i++) {
-        res.push(sectorPoints[i]);
-    }
+    for (let i = start; i <= end; i++) res.push(sectorPoints[i]);
     res.push(swapped ? from : to);
     return swapped ? res.reverse() : res;
 }
@@ -740,31 +720,19 @@ function getTrainAt(trip, line) {
     const targetDistance = Number(line === "EAL" ? trip.targetDistance : getTMLStationDistance(currentStationCode, nextStationCode, trip.distanceFromCurrentStation));
     const startDistance = Number(line === "EAL" ? trip.startDistance : trip.distanceFromCurrentStation);
 
-    // FOT->SHT->ADM will show FOT->SHT when arrived SHT
-    if (currLatLng && nextLatLng && trip.targetDistance === 0 && isPassengerTrain(trip.td))
-        return null;
+    if (currLatLng && nextLatLng && trip.targetDistance === 0 && isPassengerTrain(trip.td)) return null;
+    if ((targetDistance === 0 && startDistance === 0) || startDistance > 10000) return currLatLng;
+    if (startDistance > 10000) return currLatLng;
+    if ([0, 701].includes(currentStationCode) && [0, 701].includes(nextStationCode)) return stationLoc[line === "EAL" ? "HTD" : "PHD"];
 
-    // Handle non-passenger train
-    if ((targetDistance === 0 && startDistance === 0) || startDistance > 10000)
-        return currLatLng;
-
-    if (startDistance > 10000)
-        return currLatLng;
-
-    if ([0, 701].includes(currentStationCode) && [0, 701].includes(nextStationCode))
-        return stationLoc[line === "EAL" ? "HTD" : "PHD"];
-
-    // Is this LMC Spur sector
     const isSpur = currentStationCode === 14 || destinationStationCode === 14 || nextStationCode === 14;
     const cacheKey = `${line}-${currentStationCode}-${nextStationCode}-${isSpur}`;
 
-    // If this sector does not exist in cache, add to it
     if (!trainPathCache[cacheKey]) {
         const sectors = getAllSectorPointsBetween(currLatLng, nextLatLng, line, isSpur);
         const totalLength = spherical.computeLength(sectors);
         const cumulativeDistances = [0];
         let currentDist = 0;
-
         for (let i = 0; i < sectors.length - 1; i++) {
             currentDist += spherical.computeDistanceBetween(sectors[i], sectors[i + 1]);
             cumulativeDistances.push(currentDist);
@@ -772,15 +740,10 @@ function getTrainAt(trip, line) {
         trainPathCache[cacheKey] = {sectors, totalLength, cumulativeDistances};
     }
 
-    // Get from cache
     const cachedData = trainPathCache[cacheKey];
     const lengthBetweenCurrAndNext = cachedData.totalLength * (startDistance / (targetDistance + startDistance));
 
-    let elapsedDistance = 0;
-    let segmentDistance = 0;
-    let sector = [cachedData.sectors[0], cachedData.sectors[1]];
-
-    // Find which sector the train is in
+    let elapsedDistance = 0, segmentDistance = 0, sector = [cachedData.sectors[0], cachedData.sectors[1]];
     for (let i = 0; i < cachedData.sectors.length - 1; i++) {
         const distance = cachedData.cumulativeDistances[i + 1] - cachedData.cumulativeDistances[i];
         if (cachedData.cumulativeDistances[i] + distance >= lengthBetweenCurrAndNext) {
@@ -790,7 +753,6 @@ function getTrainAt(trip, line) {
             break;
         }
     }
-
     if (segmentDistance === 0) return sector[0];
     return spherical.interpolate(sector[0], sector[1], (lengthBetweenCurrAndNext - elapsedDistance) / segmentDistance);
 }
@@ -806,17 +768,7 @@ async function updateEALTrainLocations(data) {
             const position = getTrainAt(train, "EAL");
             if (!position) continue;
 
-            const {
-                trainId,
-                trainSpeed,
-                listCars,
-                td,
-                currentStationCode: csc,
-                nextStationCode: nsc,
-                destinationStationCode: dsc,
-                receivedTime
-            } = train;
-
+            const { trainId, trainSpeed, listCars, td, currentStationCode: csc, nextStationCode: nsc, destinationStationCode: dsc, receivedTime } = train;
             const isUp = parseInt(td.slice(-1)) % 2 !== 0;
 
             const getHtmlContent = () => {
@@ -824,79 +776,72 @@ async function updateEALTrainLocations(data) {
                 const nextStationCode = ealStationMap[nsc] || 'Unknown';
                 const destinationStationCode = ealStationMap[dsc] || 'Unknown';
 
-                // Update marker info window content
                 return `<div class="train-info-container">
-                    <div class="train-info-title font-bold text-center flex-center">
-                        ${trainId} (T${Math.floor(trainId / 3)}) ${td} ${currentStationCode} to ${nextStationCode} (${destinationStationCode}) ${trainSpeed}km/h
-                    </div><div class="train-info-cars-wrapper flex-center">
-                        <div class="train-info-direction">&#x25C0;</div>
-                        ${(isUp ? listCars : [...listCars].reverse()).map((car, idx) => {
+                    <div class="train-info-title font-bold text-center flex-center">${trainId} (T${Math.floor(trainId / 3)}) ${td} ${currentStationCode} to ${nextStationCode} (${destinationStationCode}) ${trainSpeed}km/h</div>
+                    <div class="train-info-cars-wrapper flex-center"><div class="train-info-direction">&#x25C0;</div>
+                    ${(isUp ? listCars : [...listCars].reverse()).map((car, idx) => {
                     const isFirstCl = (isUp && idx === 3) || (!isUp && idx === 5);
                     const bg = car.passengerCount < (isFirstCl ? 70 : 110) ? '#4CAF50' : car.passengerCount < (isFirstCl ? 150 : 250) ? '#CDDC39' : '#F44336';
                     return `<div class="train-info-car flex-center ${isFirstCl ? 'car-text-red' : 'text-white'}" style="background-color: ${bg};">${car.passengerCount}</div>`;
-                }).join('')}
-                    </div></div>`;
+                }).join('')}</div></div>`;
             };
 
             const isNis = csc === 0 || Date.now() / 1000 - receivedTime > 60 || !isPassengerTrain(td);
+            const newSrc = `public/r_train_${isNis ? 'unknown' : (isUp ? 'up' : 'dn')}.png`;
 
             if (trainMarkers[trainId]) {
-                // Update existing marker position
-                trainMarkers[trainId].position = position;
-                trainMarkers[trainId].map = currentVisibility.trains.EAL ? map : null;
+                trainMarkers[trainId].setLngLat([position.lng, position.lat]);
+                trainMarkers[trainId].getElement().style.display = currentVisibility.trains.EAL ? 'block' : 'none';
 
-                const imgElement = trainMarkers[trainId].content.querySelector('img');
-                const newSrc = `public/r_train_${isNis ? 'unknown' : (isUp ? 'up' : 'dn')}.png`;
-
+                const imgElement = trainMarkers[trainId].getElement().querySelector('img');
                 if (!imgElement.src.includes(newSrc)) imgElement.src = newSrc;
                 if (isNis && csc === 0) imgElement.classList.add('opacity-50');
                 else imgElement.classList.remove('opacity-50');
 
-                if (openedWindow?.associatedMarker === trainMarkers[trainId])
-                    openedWindow.setContent(getHtmlContent());
+                if (openedWindow?.associatedMarker === trainMarkers[trainId]) {
+                    openedWindow.setHTML(getHtmlContent());
+                }
             } else {
                 const element = document.createElement("div");
-                element.innerHTML = `<img src="public/r_train_${isNis ? 'unknown' : (isUp ? 'up' : 'dn')}.png" class="marker-icon train-marker-icon ${isNis && csc === 0 ? 'opacity-50' : ''}">`;
+                element.innerHTML = `<img src="${newSrc}" class="marker-icon train-marker-icon ${isNis && csc === 0 ? 'opacity-50' : ''}">`;
+                element.style.display = currentVisibility.trains.EAL ? 'block' : 'none';
 
-                const trainMarker = new AdvancedMarkerElement({
-                    position,
-                    map: currentVisibility.trains.EAL ? map : null,
-                    content: element,
-                    gmpClickable: true,
-                    zIndex: i
-                });
+                handleMarkerInteractions(element, 200 + i);
+
+                const trainMarker = new maplibregl.Marker({ element, anchor: 'center' })
+                    .setLngLat([position.lng, position.lat])
+                    .addTo(map);
 
                 trainMarker.customLineType = "EAL";
 
-                // Create the InfoWindow
-                const infoWin = new google.maps.InfoWindow({
-                    maxWidth: 1000,
-                    pixelOffset: new google.maps.Size(0, 50)
+                const infoWin = new maplibregl.Popup({
+                    maxWidth: '1000px',
+                    offset: [0, -15],
+                    closeButton: true,
+                    className: 'custom-popup'
                 });
 
-                // Attach a click event listener using native DOM methods
-                trainMarker.addListener('gmp-click', () => {
-                    if (openedWindow) openedWindow.close();
+                setupInfoWindowClose(infoWin);
 
-                    infoWin.setContent(getHtmlContent());
-                    infoWin.open(map, trainMarker);
+                element.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (openedWindow) openedWindow.remove();
+
+                    infoWin.setHTML(getHtmlContent());
+                    infoWin.setLngLat([position.lng, position.lat]).addTo(map);
                     infoWin.associatedMarker = trainMarker;
                     openedWindow = infoWin;
 
-                    allMarkers.forEach(m => {
-                        if (m.zIndex <= trainMarker.zIndex) m.zIndex++;
-                        if (m.zIndex === 0) m.zIndex = trainMarker.zIndex;
-                    });
-                    trainMarker.zIndex = 0;
+                    allMarkers.forEach(m => { if(m.getElement()) m.getElement().style.zIndex = m.getElement().originalZIndex || 100; });
+                    element.style.zIndex = 9999;
                 });
 
-                // Store the marker
                 allMarkers.push(trainMarker);
                 trainMarkers[trainId] = trainMarker;
                 i++;
             }
         } catch (e) {
-            console.error("Train data fetch error:", e);
+            console.error("EAL Train update error:", e);
         }
     }
 }
@@ -910,18 +855,7 @@ async function updateTMLTrainLocations(data) {
             const position = getTrainAt(train, "TML");
             if (!position) continue;
 
-            const {
-                trainId,
-                trainSpeed,
-                listCars,
-                currentStationCode: csc,
-                nextStationCode: nsc,
-                destinationStationCode: dsc,
-                isInService,
-                receivedTime,
-                train_type
-            } = train;
-
+            const { trainId, trainSpeed, listCars, currentStationCode: csc, nextStationCode: nsc, destinationStationCode: dsc, receivedTime, train_type } = train;
             const isUp = convertTMLStationOrder(csc) > convertTMLStationOrder(dsc);
 
             const getHtmlContent = () => {
@@ -930,79 +864,70 @@ async function updateTMLTrainLocations(data) {
                 const destinationStationCode = tmlStationMap[dsc] || nsc;
 
                 return `<div class="train-info-container">
-                    <div class="train-info-title font-bold text-center flex-center">
-                        ${trainId} ${currentStationCode} to ${nextStationCode} (${destinationStationCode}) ${trainSpeed}km/h
-                    </div><div class="train-info-cars-wrapper flex-center">
-                        <div class="train-info-direction">&#x25C0;</div>
-                        ${(!isUp ? listCars : [...listCars].reverse()).map(car => {
+                    <div class="train-info-title font-bold text-center flex-center">${trainId} ${currentStationCode} to ${nextStationCode} (${destinationStationCode}) ${trainSpeed}km/h</div>
+                    <div class="train-info-cars-wrapper flex-center"><div class="train-info-direction">&#x25C0;</div>
+                    ${(!isUp ? listCars : [...listCars].reverse()).map(car => {
                     const bg = car.passengerCount < 110 ? '#4CAF50' : car.passengerCount < 250 ? '#CDDC39' : '#F44336';
                     return `<div class="train-info-car flex-center text-white" style="background-color: ${bg};">${car.passengerCount ?? '-'}</div>`;
-                }).join('')}
-                    </div></div>`;
+                }).join('')}</div></div>`;
             };
 
             const isNis = csc === 0 || Date.now() / 1000 - receivedTime > 60;
             const prefix = train_type === "SP1900" ? "sp1900" : "t1141a";
+            const newSrc = `public/${prefix}_${isNis ? 'unknown' : (isUp ? 'dn' : 'up')}.png`;
 
             if (trainMarkers[trainId]) {
-                // Update existing marker position
-                trainMarkers[trainId].position = position;
-                trainMarkers[trainId].map = currentVisibility.trains.TML ? map : null;
+                trainMarkers[trainId].setLngLat([position.lng, position.lat]);
+                trainMarkers[trainId].getElement().style.display = currentVisibility.trains.TML ? 'block' : 'none';
 
-                const imgElement = trainMarkers[trainId].content.querySelector('img');
-                const newSrc = `public/${prefix}_${isNis ? 'unknown' : (isUp ? 'dn' : 'up')}.png`;
-
+                const imgElement = trainMarkers[trainId].getElement().querySelector('img');
                 if (!imgElement.src.includes(newSrc)) imgElement.src = newSrc;
                 if (isNis && csc === 0) imgElement.classList.add('opacity-50');
                 else imgElement.classList.remove('opacity-50');
 
-                // If the info window for this marker is open, update its content
                 if (openedWindow?.associatedMarker === trainMarkers[trainId]) {
-                    openedWindow.setContent(getHtmlContent());
+                    openedWindow.setHTML(getHtmlContent());
                 }
             } else {
                 const element = document.createElement("div");
                 element.className = "tml-train-marker-wrapper";
-                element.innerHTML = `<img src="public/${prefix}_${isNis ? 'unknown' : (isUp ? 'dn' : 'up')}.png" class="marker-icon train-marker-icon ${isNis && csc === 0 ? 'opacity-50' : ''}">`;
+                element.innerHTML = `<img src="${newSrc}" class="marker-icon train-marker-icon ${isNis && csc === 0 ? 'opacity-50' : ''}">`;
+                element.style.display = currentVisibility.trains.TML ? 'block' : 'none';
 
-                const trainMarker = new AdvancedMarkerElement({
-                    position,
-                    map: currentVisibility.trains.TML ? map : null,
-                    content: element,
-                    gmpClickable: true,
-                    zIndex: 36 + i
-                });
+                handleMarkerInteractions(element, 300 + i);
+
+                const trainMarker = new maplibregl.Marker({ element, anchor: 'center' })
+                    .setLngLat([position.lng, position.lat])
+                    .addTo(map);
 
                 trainMarker.customLineType = "TML";
 
-                // Create the InfoWindow
-                const infoWin = new google.maps.InfoWindow({
-                    maxWidth: 1000,
-                    pixelOffset: new google.maps.Size(0, 50)
+                const infoWin = new maplibregl.Popup({
+                    maxWidth: '1000px',
+                    offset: [0, -15],
+                    closeButton: true,
+                    className: 'custom-popup'
                 });
 
-                // Attach a click event listener using native DOM methods
-                trainMarker.addListener('gmp-click', () => {
-                    if (openedWindow) openedWindow.close();
+                setupInfoWindowClose(infoWin);
 
-                    infoWin.setContent(getHtmlContent());
-                    infoWin.open(map, trainMarker);
+                element.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (openedWindow) openedWindow.remove();
+
+                    infoWin.setHTML(getHtmlContent());
+                    infoWin.setLngLat([position.lng, position.lat]).addTo(map);
                     infoWin.associatedMarker = trainMarker;
                     openedWindow = infoWin;
 
-                    allMarkers.forEach(m => {
-                        if (m.zIndex <= trainMarker.zIndex) m.zIndex++;
-                        if (m.zIndex === 0) m.zIndex = trainMarker.zIndex;
-                    });
-                    trainMarker.zIndex = 0;
+                    allMarkers.forEach(m => { if(m.getElement()) m.getElement().style.zIndex = m.getElement().originalZIndex || 100; });
+                    element.style.zIndex = 9999;
                 });
 
-                // Store the marker
                 allMarkers.push(trainMarker);
                 trainMarkers[trainId] = trainMarker;
                 i++;
             }
-        } catch (e) {
-        }
+        } catch (e) {}
     }
 }
