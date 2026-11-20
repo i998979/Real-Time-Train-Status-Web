@@ -147,6 +147,30 @@ export async function onRequest(context) {
                 throw new Error("Google account is not verified");
             }
 
+            const loggedAt = new Date().toISOString();
+            const loginEvent = {
+                event: "google_login",
+                email: user.email,
+                google_sub: user.sub,
+                logged_at: loggedAt
+            };
+
+            // Immediate event visibility in Cloudflare Workers Logs.
+            console.log("Google login:", loginEvent);
+
+            // Persistent history in D1. Logging failures must not block authentication.
+            if (env.LOGIN_DB) {
+                try {
+                    await env.LOGIN_DB.prepare(
+                        "INSERT INTO login_events (google_sub, email, logged_at) VALUES (?, ?, ?)"
+                    ).bind(user.sub, user.email, loggedAt).run();
+                } catch (error) {
+                    console.error("Failed to save Google login event to D1:", error);
+                }
+            } else {
+                console.warn("LOGIN_DB binding is not configured; login was not saved to D1.");
+            }
+
             const session = await createSession(user, env.SESSION_SECRET);
             return redirect("/", [
                 cookieHeader("site_session", session, SESSION_MAX_AGE),
