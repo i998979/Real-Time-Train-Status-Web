@@ -1,49 +1,37 @@
-CREATE TABLE IF NOT EXISTS login_events (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    event_type TEXT NOT NULL,
-    status TEXT NOT NULL,
-    email TEXT,
-    google_sub TEXT,
-    name TEXT,
-    picture TEXT,
-    email_verified INTEGER,
-    logged_at TEXT NOT NULL,
-    ip TEXT,
-    user_agent TEXT,
-    browser TEXT,
-    os TEXT,
-    device_type TEXT,
-    country TEXT,
-    continent TEXT,
-    city TEXT,
-    region TEXT,
-    region_code TEXT,
-    postal_code TEXT,
-    latitude TEXT,
-    longitude TEXT,
-    timezone TEXT,
-    is_eu_country INTEGER,
-    asn INTEGER,
-    as_organization TEXT,
-    colo TEXT,
-    cf_ray TEXT,
-    accept_language TEXT,
-    referer TEXT,
-    origin TEXT,
-    http_protocol TEXT,
-    tls_version TEXT,
-    client_tcp_rtt INTEGER,
-    request_method TEXT,
-    request_path TEXT,
-    failure_reason TEXT,
-    metadata_json TEXT
-);
-
-CREATE INDEX IF NOT EXISTS idx_login_events_logged_at
-ON login_events (logged_at DESC);
-
-CREATE INDEX IF NOT EXISTS idx_login_events_google_sub
-ON login_events (google_sub);
+ALTER TABLE login_events ADD COLUMN event_type TEXT NOT NULL DEFAULT 'google_login';
+ALTER TABLE login_events ADD COLUMN status TEXT NOT NULL DEFAULT 'success';
+ALTER TABLE login_events ADD COLUMN name TEXT;
+ALTER TABLE login_events ADD COLUMN picture TEXT;
+ALTER TABLE login_events ADD COLUMN email_verified INTEGER;
+ALTER TABLE login_events ADD COLUMN ip TEXT;
+ALTER TABLE login_events ADD COLUMN user_agent TEXT;
+ALTER TABLE login_events ADD COLUMN browser TEXT;
+ALTER TABLE login_events ADD COLUMN os TEXT;
+ALTER TABLE login_events ADD COLUMN device_type TEXT;
+ALTER TABLE login_events ADD COLUMN country TEXT;
+ALTER TABLE login_events ADD COLUMN continent TEXT;
+ALTER TABLE login_events ADD COLUMN city TEXT;
+ALTER TABLE login_events ADD COLUMN region TEXT;
+ALTER TABLE login_events ADD COLUMN region_code TEXT;
+ALTER TABLE login_events ADD COLUMN postal_code TEXT;
+ALTER TABLE login_events ADD COLUMN latitude TEXT;
+ALTER TABLE login_events ADD COLUMN longitude TEXT;
+ALTER TABLE login_events ADD COLUMN timezone TEXT;
+ALTER TABLE login_events ADD COLUMN is_eu_country INTEGER;
+ALTER TABLE login_events ADD COLUMN asn INTEGER;
+ALTER TABLE login_events ADD COLUMN as_organization TEXT;
+ALTER TABLE login_events ADD COLUMN colo TEXT;
+ALTER TABLE login_events ADD COLUMN cf_ray TEXT;
+ALTER TABLE login_events ADD COLUMN accept_language TEXT;
+ALTER TABLE login_events ADD COLUMN referer TEXT;
+ALTER TABLE login_events ADD COLUMN origin TEXT;
+ALTER TABLE login_events ADD COLUMN http_protocol TEXT;
+ALTER TABLE login_events ADD COLUMN tls_version TEXT;
+ALTER TABLE login_events ADD COLUMN client_tcp_rtt INTEGER;
+ALTER TABLE login_events ADD COLUMN request_method TEXT;
+ALTER TABLE login_events ADD COLUMN request_path TEXT;
+ALTER TABLE login_events ADD COLUMN failure_reason TEXT;
+ALTER TABLE login_events ADD COLUMN metadata_json TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_login_events_email
 ON login_events (email);
