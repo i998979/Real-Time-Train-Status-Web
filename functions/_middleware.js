@@ -115,11 +115,104 @@ export async function onRequest(context) {
         const code = url.searchParams.get("code");
         const savedState = cookie(request, "oauth_state");
         const verifier = cookie(request, "oauth_verifier");
+        const cf = request.cf || {};
+        const userAgent = request.headers.get("User-Agent") || "";
+        const ua = userAgent.toLowerCase();
+        const requestInfo = {
+            ip: request.headers.get("CF-Connecting-IP"),
+            user_agent: userAgent,
+            browser: /edg\//.test(ua) ? "Edge" : /opr\//.test(ua) || /opera/.test(ua) ? "Opera" : /firefox\//.test(ua) ? "Firefox" : /chrome\//.test(ua) ? "Chrome" : /safari\//.test(ua) ? "Safari" : "Unknown",
+            os: /windows/.test(ua) ? "Windows" : /android/.test(ua) ? "Android" : /iphone|ipad|ipod/.test(ua) ? "iOS" : /mac os/.test(ua) ? "macOS" : /linux/.test(ua) ? "Linux" : "Unknown",
+            device_type: /ipad|tablet/.test(ua) ? "Tablet" : /mobile|iphone|ipod|android/.test(ua) ? "Mobile" : "Desktop",
+            country: cf.country || request.headers.get("CF-IPCountry"),
+            continent: cf.continent,
+            city: cf.city,
+            region: cf.region,
+            region_code: cf.regionCode,
+            postal_code: cf.postalCode,
+            latitude: cf.latitude,
+            longitude: cf.longitude,
+            timezone: cf.timezone,
+            is_eu_country: cf.isEUCountry,
+            asn: cf.asn,
+            as_organization: cf.asOrganization,
+            colo: cf.colo,
+            cf_ray: request.headers.get("CF-Ray"),
+            accept_language: request.headers.get("Accept-Language"),
+            referer: request.headers.get("Referer"),
+            origin: request.headers.get("Origin"),
+            http_protocol: cf.httpProtocol,
+            tls_version: cf.tlsVersion,
+            client_tcp_rtt: cf.clientTcpRtt,
+            request_method: request.method,
+            request_path: path
+        };
+        const loggedAt = new Date().toISOString();
+
+        const saveAudit = async (status, user = null, failureReason = null) => {
+            const event = {
+                event: "google_login",
+                status,
+                email: user?.email || null,
+                google_sub: user?.sub || null,
+                name: user?.name || null,
+                picture: user?.picture || null,
+                email_verified: user?.email_verified ?? null,
+                failure_reason: failureReason,
+                logged_at: loggedAt,
+                ...requestInfo
+            };
+            const logMethod = status === "success" ? console.log : console.warn;
+            logMethod("Google login:", event);
+
+            if (!env.LOGIN_DB) {
+                console.warn("LOGIN_DB binding is not configured; login audit event was not saved.");
+                return;
+            }
+
+            try {
+                const columns = [
+                    "event_type", "status", "email", "google_sub", "name", "picture",
+                    "email_verified", "logged_at", "ip", "user_agent", "browser", "os",
+                    "device_type", "country", "continent", "city", "region", "region_code",
+                    "postal_code", "latitude", "longitude", "timezone", "is_eu_country",
+                    "asn", "as_organization", "colo", "cf_ray", "accept_language", "referer",
+                    "origin", "http_protocol", "tls_version", "client_tcp_rtt", "request_method",
+                    "request_path", "failure_reason", "metadata_json"
+                ];
+                const values = [
+                    "google_login", status, user?.email || null, user?.sub || null,
+                    user?.name || null, user?.picture || null,
+                    user?.email_verified == null ? null : (user.email_verified ? 1 : 0),
+                    loggedAt, requestInfo.ip, requestInfo.user_agent, requestInfo.browser,
+                    requestInfo.os, requestInfo.device_type, requestInfo.country,
+                    requestInfo.continent ?? null, requestInfo.city ?? null, requestInfo.region ?? null,
+                    requestInfo.region_code ?? null, requestInfo.postal_code ?? null,
+                    requestInfo.latitude ?? null, requestInfo.longitude ?? null,
+                    requestInfo.timezone ?? null,
+                    requestInfo.is_eu_country == null ? null : (requestInfo.is_eu_country ? 1 : 0),
+                    requestInfo.asn ?? null, requestInfo.as_organization ?? null,
+                    requestInfo.colo ?? null, requestInfo.cf_ray, requestInfo.accept_language,
+                    requestInfo.referer, requestInfo.origin, requestInfo.http_protocol ?? null,
+                    requestInfo.tls_version ?? null, requestInfo.client_tcp_rtt ?? null,
+                    requestInfo.request_method, requestInfo.request_path, failureReason,
+                    JSON.stringify(event)
+                ];
+                await env.LOGIN_DB.prepare(
+                    `INSERT INTO login_events (${columns.join(", ")}) VALUES (${columns.map(() => "?").join(", ")})`
+                ).bind(...values).run();
+            } catch (error) {
+                console.error("Failed to save login audit event to D1:", error);
+            }
+        };
 
         if (!code || !state || !savedState || state !== savedState || !verifier) {
+            await saveAudit("failed", null, "Invalid or missing OAuth state, code, or verifier");
             return new Response("Invalid login response. Please try again.", { status: 400 });
         }
 
+        let user = null;
+        let failureReason = "Authentication failed";
         try {
             const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
                 method: "POST",
@@ -134,54 +227,38 @@ export async function onRequest(context) {
                 })
             });
 
-            if (!tokenResponse.ok) throw new Error("Token exchange failed");
+            if (!tokenResponse.ok) {
+                failureReason = "Google token exchange rejected the request";
+                throw new Error(failureReason);
+            }
             const tokens = await tokenResponse.json();
 
             const userResponse = await fetch("https://openidconnect.googleapis.com/v1/userinfo", {
                 headers: { Authorization: "Bearer " + tokens.access_token }
             });
-            if (!userResponse.ok) throw new Error("User verification failed");
-
-            const user = await userResponse.json();
-            if (!user.sub || !user.email || user.email_verified !== true) {
-                throw new Error("Google account is not verified");
+            if (!userResponse.ok) {
+                failureReason = "Google userinfo request failed";
+                throw new Error(failureReason);
             }
 
-            const loggedAt = new Date().toISOString();
-            const loginEvent = {
-                event: "google_login",
-                email: user.email,
-                google_sub: user.sub,
-                logged_at: loggedAt
-            };
-
-            // Immediate event visibility in Cloudflare Workers Logs.
-            console.log("Google login:", loginEvent);
-
-            // Persistent history in D1. Logging failures must not block authentication.
-            if (env.LOGIN_DB) {
-                try {
-                    await env.LOGIN_DB.prepare(
-                        "INSERT INTO login_events (google_sub, email, logged_at) VALUES (?, ?, ?)"
-                    ).bind(user.sub, user.email, loggedAt).run();
-                } catch (error) {
-                    console.error("Failed to save Google login event to D1:", error);
-                }
-            } else {
-                console.warn("LOGIN_DB binding is not configured; login was not saved to D1.");
+            user = await userResponse.json();
+            if (!user.sub || !user.email || user.email_verified !== true) {
+                failureReason = "Google account identity or verified email is missing";
+                throw new Error(failureReason);
             }
 
             const session = await createSession(user, env.SESSION_SECRET);
+            await saveAudit("success", user);
             return redirect("/", [
                 cookieHeader("site_session", session, SESSION_MAX_AGE),
                 cookieHeader("oauth_state", "", 0),
                 cookieHeader("oauth_verifier", "", 0)
             ]);
         } catch {
+            await saveAudit("failed", user, failureReason);
             return new Response("Google login failed. Please try again.", { status: 401 });
         }
     }
-
     if (path === "/auth/logout") {
         return redirect("/", [cookieHeader("site_session", "", 0)]);
     }
