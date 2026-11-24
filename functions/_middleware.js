@@ -22,6 +22,14 @@ function cookieHeader(name, value, maxAge) {
     return `${name}=${value}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${maxAge}`;
 }
 
+function clearOAuthCookies() {
+    return [
+        cookieHeader("oauth_state", "", 0),
+        cookieHeader("oauth_verifier", "", 0),
+        cookieHeader("oauth_return", "", 0)
+    ];
+}
+
 async function signingKey(secret) {
     return crypto.subtle.importKey(
         "raw",
@@ -77,6 +85,14 @@ function redirect(location, cookies = []) {
     return new Response(null, { status: 302, headers });
 }
 
+function responseWithClearedCookies(message, status) {
+    const headers = new Headers({ "Cache-Control": "no-store" });
+    for (const value of clearOAuthCookies()) {
+        headers.append("Set-Cookie", value);
+    }
+    return new Response(message, { status, headers });
+}
+
 export async function onRequest(context) {
     const { request, env } = context;
     const url = new URL(request.url);
@@ -87,6 +103,17 @@ export async function onRequest(context) {
     }
 
     if (path === "/auth/google") {
+        let returnTo = "/";
+        try {
+            const target = new URL(
+                url.searchParams.get("return_to") || "/",
+                url.origin
+            );
+            if (target.origin === url.origin) {
+                returnTo = target.pathname + target.search;
+            }
+        } catch {}
+
         const state = randomToken();
         const verifier = randomToken(48);
         const challengeBytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
@@ -106,7 +133,8 @@ export async function onRequest(context) {
 
         return redirect(googleUrl.toString(), [
             cookieHeader("oauth_state", state, 600),
-            cookieHeader("oauth_verifier", verifier, 600)
+            cookieHeader("oauth_verifier", verifier, 600),
+            cookieHeader("oauth_return", encodeURIComponent(returnTo), 600)
         ]);
     }
 
@@ -115,9 +143,24 @@ export async function onRequest(context) {
         const code = url.searchParams.get("code");
         const savedState = cookie(request, "oauth_state");
         const verifier = cookie(request, "oauth_verifier");
+
+        let originalUrl = "/";
+        try {
+            const saved = cookie(request, "oauth_return");
+            const target = new URL(
+                decodeURIComponent(saved || "%2F"),
+                url.origin
+            );
+            if (target.origin === url.origin) {
+                originalUrl = target.pathname + target.search;
+            }
+        } catch {}
+
+        const original = new URL(originalUrl, url.origin);
         const cf = request.cf || {};
         const userAgent = request.headers.get("User-Agent") || "";
         const ua = userAgent.toLowerCase();
+
         const requestInfo = {
             ip: request.headers.get("CF-Connecting-IP"),
             user_agent: userAgent,
@@ -147,6 +190,7 @@ export async function onRequest(context) {
             request_method: request.method,
             request_path: path
         };
+
         const loggedAt = new Date().toISOString();
 
         const saveAudit = async (status, user = null, failureReason = null) => {
@@ -160,8 +204,12 @@ export async function onRequest(context) {
                 email_verified: user?.email_verified ?? null,
                 failure_reason: failureReason,
                 logged_at: loggedAt,
-                ...requestInfo
+                ...requestInfo,
+                original_url: originalUrl,
+                original_path: original.pathname,
+                query_parameters: Array.from(original.searchParams.entries())
             };
+
             const logMethod = status === "success" ? console.log : console.warn;
             logMethod("Google login:", event);
 
@@ -180,6 +228,7 @@ export async function onRequest(context) {
                     "origin", "http_protocol", "tls_version", "client_tcp_rtt", "request_method",
                     "request_path", "failure_reason", "metadata_json"
                 ];
+
                 const values = [
                     "google_login", status, user?.email || null, user?.sub || null,
                     user?.name || null, user?.picture || null,
@@ -198,6 +247,7 @@ export async function onRequest(context) {
                     requestInfo.request_method, requestInfo.request_path, failureReason,
                     JSON.stringify(event)
                 ];
+
                 await env.LOGIN_DB.prepare(
                     `INSERT INTO login_events (${columns.join(", ")}) VALUES (${columns.map(() => "?").join(", ")})`
                 ).bind(...values).run();
@@ -208,11 +258,15 @@ export async function onRequest(context) {
 
         if (!code || !state || !savedState || state !== savedState || !verifier) {
             await saveAudit("failed", null, "Invalid or missing OAuth state, code, or verifier");
-            return new Response("Invalid login response. Please try again.", { status: 400 });
+            return responseWithClearedCookies(
+                "Invalid login response. Please try again.",
+                400
+            );
         }
 
         let user = null;
         let failureReason = "Authentication failed";
+
         try {
             const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
                 method: "POST",
@@ -231,17 +285,20 @@ export async function onRequest(context) {
                 failureReason = "Google token exchange rejected the request";
                 throw new Error(failureReason);
             }
+
             const tokens = await tokenResponse.json();
 
             const userResponse = await fetch("https://openidconnect.googleapis.com/v1/userinfo", {
                 headers: { Authorization: "Bearer " + tokens.access_token }
             });
+
             if (!userResponse.ok) {
                 failureReason = "Google userinfo request failed";
                 throw new Error(failureReason);
             }
 
             user = await userResponse.json();
+
             if (!user.sub || !user.email || user.email_verified !== true) {
                 failureReason = "Google account identity or verified email is missing";
                 throw new Error(failureReason);
@@ -249,23 +306,29 @@ export async function onRequest(context) {
 
             const session = await createSession(user, env.SESSION_SECRET);
             await saveAudit("success", user);
-            return redirect("/", [
+
+            return redirect(originalUrl, [
                 cookieHeader("site_session", session, SESSION_MAX_AGE),
-                cookieHeader("oauth_state", "", 0),
-                cookieHeader("oauth_verifier", "", 0)
+                ...clearOAuthCookies()
             ]);
         } catch {
             await saveAudit("failed", user, failureReason);
-            return new Response("Google login failed. Please try again.", { status: 401 });
+            return responseWithClearedCookies(
+                "Google login failed. Please try again.",
+                401
+            );
         }
     }
+
     if (path === "/auth/logout") {
         return redirect("/", [cookieHeader("site_session", "", 0)]);
     }
 
     if (path === "/" || path === "/index.html") {
         if (!(await validSession(request, env.SESSION_SECRET))) {
-            return redirect("/auth/google");
+            return redirect(
+                `/auth/google?return_to=${encodeURIComponent(url.pathname + url.search)}`
+            );
         }
     }
 
