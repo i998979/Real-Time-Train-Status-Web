@@ -97,6 +97,12 @@ export async function onRequest(context) {
     const { request, env } = context;
     const url = new URL(request.url);
     const path = url.pathname;
+    const isPageRequest =
+        (request.headers.get("Accept") || "").includes("text/html");
+
+    if (!path.startsWith("/auth/") && !isPageRequest) {
+        return context.next();
+    }
 
     if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET || !env.SESSION_SECRET) {
         return new Response("Authentication is not configured.", { status: 500 });
@@ -324,7 +330,7 @@ export async function onRequest(context) {
         return redirect("/", [cookieHeader("site_session", "", 0)]);
     }
 
-    if (path === "/" || path === "/index.html") {
+    if (isPageRequest) {
         if (!(await validSession(request, env.SESSION_SECRET))) {
             return redirect(
                 `/auth/google?return_to=${encodeURIComponent(url.pathname + url.search)}`
