@@ -618,6 +618,16 @@ async function drawStations() {
                 shouldFocus: false
             });
 
+            // Log only when a station InfoWindow is opened, not when it is closed
+            fetch("/api/station-click", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({
+                    station,
+                    station_name: stations[station.toLowerCase()] ?? station
+                })
+            }).catch(error => console.error("Failed to log station click:", error));
+
             // Fetch station data
             fetchNextTrain(station);
             fetchRoctec(station);
